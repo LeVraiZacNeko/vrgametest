@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Chasse aux Orbes - AR Mains</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Orbes AR">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; font-family:-apple-system, Arial, sans-serif; }
+  #video { display:none; }
+  #stage {
+    position:fixed; inset:0; display:flex;
+    padding-left:env(safe-area-inset-left,0px);
+    padding-right:env(safe-area-inset-right,0px);
+  }
+  canvas.eye { width:50%; height:100%; background:#000; display:block; }
+  #divider { position:fixed; top:0; bottom:0; left:50%; width:1px; background:rgba(255,255,255,0.12); z-index:5; pointer-events:none; }
+
+  #overlay {
+    position:fixed; inset:0; z-index:20;
+    background:radial-gradient(circle at center, #16213e 0%, #05070f 100%);
+    color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:24px; box-sizing:border-box;
+    padding-top:calc(24px + env(safe-area-inset-top,0px));
+    padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));
+  }
+  #overlay h1 { font-size:1.4rem; margin:0 0 10px; }
+  #overlay p { font-size:0.88rem; line-height:1.5; max-width:340px; color:#c9d2e3; margin:0 0 14px; }
+  .bigBtn {
+    padding:15px 26px; font-size:1rem; border:none; border-radius:14px;
+    background:#5b8cff; color:#fff; font-weight:600; box-shadow:0 6px 18px rgba(91,140,255,0.4);
+    margin-bottom:10px; min-width:230px;
+  }
+  .bigBtn:active { transform:scale(0.97); }
+  #status { font-size:0.82rem; color:#8ea0c9; min-height:18px; }
+  #errorMsg { color:#ff8080; font-size:0.82rem; max-width:320px; }
+
+  #rotateHint {
+    position:fixed; inset:0; z-index:25; background:#05070f; color:#fff;
+    display:none; align-items:center; justify-content:center; flex-direction:column;
+    text-align:center; padding:24px;
+  }
+  #rotateHint.show { display:flex; }
+
+  #calibToggle {
+    position:fixed; z-index:15; bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    right:calc(14px + env(safe-area-inset-right,0px));
+    width:38px; height:38px; border-radius:50%; border:none;
+    background:rgba(255,255,255,0.15); color:#fff; font-size:1rem;
+  }
+  #calibPanel {
+    position:fixed; z-index:15; bottom:calc(58px + env(safe-area-inset-bottom,0px));
+    right:calc(14px + env(safe-area-inset-right,0px));
+    background:rgba(10,14,24,0.9); border-radius:12px; padding:10px;
+    display:none; flex-direction:column; align-items:center; gap:6px;
+  }
+  #calibPanel.show { display:flex; }
+  #calibPanel span { color:#c9d2e3; font-size:0.75rem; }
+  #calibPanel .row { display:flex; gap:6px; }
+  #calibPanel button {
+    width:36px; height:36px; border-radius:8px; border:none;
+    background:rgba(255,255,255,0.15); color:#fff; font-size:1.1rem;
+  }
+
+  #winOverlay {
+    position:fixed; inset:0; z-index:20; display:none;
+    background:rgba(5,7,15,0.92); color:#fff; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:24px; box-sizing:border-box;
+  }
+  #winOverlay h1 { font-size:1.7rem; margin:0 0 8px; }
+  #winOverlay p { color:#c9d2e3; margin:0 0 20px; }
+</style>
+</head>
+<body>
+
+<video id="video" playsinline muted></video>
+
+<div id="stage">
+  <canvas id="leftEye" class="eye"></canvas>
+  <canvas id="rightEye" class="eye"></canvas>
+</div>
+<div id="divider"></div>
+
+<button id="calibToggle">⚙️</button>
+<div id="calibPanel">
+  <span>Calibration œil</span>
+  <div class="row">
+    <button id="calibLeft">◀</button>
+    <button id="calibReset">⟳</button>
+    <button id="calibRight">▶</button>
+  </div>
+</div>
+
+<div id="rotateHint">
+  <div style="font-size:2.5rem; margin-bottom:12px;">📱↻</div>
+  <p>Tourne ton téléphone en mode paysage pour utiliser le boîtier cardboard.</p>
+</div>
+
+<div id="overlay">
+  <h1>🖐️ Chasse aux Orbes — AR</h1>
+  <p>
+    Les orbes flottent autour de toi, superposées à la vraie caméra arrière.
+    Approche ta main pour les attraper ! Nécessite un boîtier cardboard
+    avec une ouverture alignée sur l'objectif arrière.
+  </p>
+  <button id="iosPermBtn" class="bigBtn" style="display:none;">Activer les capteurs de mouvement</button>
+  <button id="startBtn" class="bigBtn">Démarrer</button>
+  <p id="status"></p>
+  <p id="errorMsg"></p>
+</div>
+
+<div id="winOverlay">
+  <h1>🎉 Bravo !</h1>
+  <p>Tu as attrapé toutes les orbes.</p>
+  <button id="restartBtn" class="bigBtn">Rejouer</button>
+</div>
+
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+/* ---------- Éléments DOM ---------- */
+const video = document.getElementById('video');
+const leftCanvas = document.getElementById('leftEye');
+const rightCanvas = document.getElementById('rightEye');
+const leftCtx = leftCanvas.getContext('2d');
+const rightCtx = rightCanvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const winOverlay = document.getElementById('winOverlay');
+const statusEl = document.getElementById('status');
+const errorEl = document.getElementById('errorMsg');
+const startBtn = document.getElementById('startBtn');
+const iosPermBtn = document.getElementById('iosPermBtn');
+const rotateHint = document.getElementById('rotateHint');
+const calibToggle = document.getElementById('calibToggle');
+const calibPanel = document.getElementById('calibPanel');
+
+/* ---------- Redimensionnement (correction viewport iOS) ---------- */
+// window.visualViewport reflète la zone RÉELLEMENT visible (exclut la barre
+// flottante de Safari), contrairement à window.innerWidth/innerHeight qui
+// peut inclure une zone masquée par cette barre ou l'encoche en paysage.
+function getViewportSize() {
+  if (window.visualViewport) {
+    return { w: window.visualViewport.width, h: window.visualViewport.height };
+  }
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
+function resizeCanvases() {
+  const { w, h } = getViewportSize();
+  const eyeW = Math.round(w / 2);
+  const eyeH = Math.round(h);
+  [leftCanvas, rightCanvas].forEach(c => {
+    c.width = eyeW;
+    c.height = eyeH;
+    c.style.width = eyeW + 'px';
+    c.style.height = eyeH + 'px';
+  });
+  checkOrientation(w, h);
+}
+
+function checkOrientation(w, h) {
+  rotateHint.classList.toggle('show', h > w);
+}
+
+window.addEventListener('resize', resizeCanvases);
+window.addEventListener('orientationchange', () => setTimeout(resizeCanvases, 300));
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', resizeCanvases);
+}
+resizeCanvases();
+
+/* ---------- Calibration manuelle (décalage indépendant par œil) ---------- */
+let calibOffset = parseInt(localStorage.getItem('vrCalibOffset') || '0', 10);
+calibToggle.addEventListener('click', () => calibPanel.classList.toggle('show'));
+document.getElementById('calibLeft').addEventListener('click', () => setCalib(calibOffset - 2));
+document.getElementById('calibRight').addEventListener('click', () => setCalib(calibOffset + 2));
+document.getElementById('calibReset').addEventListener('click', () => setCalib(0));
+function setCalib(v) {
+  calibOffset = Math.max(-40, Math.min(40, v));
+  localStorage.setItem('vrCalibOffset', String(calibOffset));
+}
+
+/* ---------- Orientation de l'appareil -> quaternion caméra ---------- */
+// Reprend la méthode standard three.js (DeviceOrientationControls) pour
+// convertir alpha/beta/gamma en une orientation 3D fiable sur mobile.
+const zee = new THREE.Vector3(0, 0, 1);
+const euler = new THREE.Euler();
+const q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const camQuaternion = new THREE.Quaternion();
+
+function updateCameraQuaternion(alphaDeg, betaDeg, gammaDeg, orientDeg) {
+  const alpha = THREE.MathUtils.degToRad(alphaDeg || 0);
+  const beta = THREE.MathUtils.degToRad(betaDeg || 0);
+  const gamma = THREE.MathUtils.degToRad(gammaDeg || 0);
+  const orient = THREE.MathUtils.degToRad(orientDeg || 0);
+  euler.set(beta, alpha, -gamma, 'YXZ');
+  camQuaternion.setFromEuler(euler);
+  camQuaternion.multiply(q1);
+  camQuaternion.multiply(q0.setFromAxisAngle(zee, -orient));
+}
+
+function getScreenOrientAngle() {
+  if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+  return window.orientation || 0;
+}
+
+function onDeviceOrientation(e) {
+  updateCameraQuaternion(e.alpha, e.beta, e.gamma, getScreenOrientAngle());
+}
+
+/* ---------- Projection 3D -> écran ---------- */
+const VFOV_DEG = 80;
+const forwardV = new THREE.Vector3();
+const rightV = new THREE.Vector3();
+const upV = new THREE.Vector3();
+const dirV = new THREE.Vector3();
+
+function worldToScreen(worldPos, canvasW, canvasH) {
+  forwardV.set(0, 0, -1).applyQuaternion(camQuaternion);
+  rightV.set(1, 0, 0).applyQuaternion(camQuaternion);
+  upV.set(0, 1, 0).applyQuaternion(camQuaternion);
+  dirV.copy(worldPos);
+
+  const forward = dirV.dot(forwardV);
+  if (forward <= 0.05) return null;
+  const right = dirV.dot(rightV);
+  const up = dirV.dot(upV);
+
+  const vFov = THREE.MathUtils.degToRad(VFOV_DEG);
+  const aspect = canvasW / canvasH;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+
+  const ndcX = (right / forward) / Math.tan(hFov / 2);
+  const ndcY = (up / forward) / Math.tan(vFov / 2);
+  if (ndcX < -1.2 || ndcX > 1.2 || ndcY < -1.2 || ndcY > 1.2) return null;
+
+  return {
+    x: (ndcX * 0.5 + 0.5) * canvasW,
+    y: (0.5 - ndcY * 0.5) * canvasH
+  };
+}
+
+/* ---------- Orbes ---------- */
+const TOTAL_ORBS = 8;
+let collected = 0;
+const colors = ['#ff6b6b', '#5bffb0', '#5b8cff', '#ffd15b', '#c85bff', '#5bf0ff', '#ff5bb0', '#a3ff5b'];
+let orbs = [];
+
+function randomOrbPosition() {
+  const radius = 2.6 + Math.random() * 1.4;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = (Math.random() * 0.8 + 0.15) * Math.PI * 0.5;
+  const x = radius * Math.sin(phi) * Math.cos(theta);
+  const y = 0.3 + radius * Math.cos(phi) * 0.6;
+  const z = radius * Math.sin(phi) * Math.sin(theta);
+  return new THREE.Vector3(x, y, z);
+}
+
+function spawnOrbs() {
+  orbs = [];
+  for (let i = 0; i < TOTAL_ORBS; i++) {
+    orbs.push({
+      pos: randomOrbPosition(),
+      color: colors[i % colors.length],
+      radius: 0.22,
+      caught: false,
+      pulse: Math.random() * Math.PI * 2
+    });
+  }
+  collected = 0;
+}
+
+/* ---------- Suivi de mains ---------- */
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],
+  [0,17]
+];
+const CATCH_LANDMARKS = [0, 4, 8, 12, 16, 20]; // poignet + bouts des doigts
+const HAND_COLORS = ['#5bffb0', '#5b8cff'];
+
+let handLandmarker = null;
+let running = false;
+let lastHands = [];
+
+/* ---------- Rendu par œil ---------- */
+function drawEye(ctx, canvas, eyeShift) {
+  const w = canvas.width, h = canvas.height;
+  ctx.save();
+  ctx.clearRect(0, 0, w, h);
+  ctx.translate(eyeShift, 0);
+
+  // Fond caméra
+  ctx.drawImage(video, 0, 0, w, h);
+
+  // Orbes
+  const now = performance.now() / 500;
+  orbs.forEach(orb => {
+    if (orb.caught) return;
+    const p = worldToScreen(orb.pos, w, h);
+    orb._screen = p; // mémorisé pour la détection d'attrape (calculé une seule fois par frame ailleurs)
+    if (!p) return;
+    const pulse = 1 + 0.08 * Math.sin(now + orb.pulse);
+    const r = 26 * pulse;
+    const grad = ctx.createRadialGradient(p.x, p.y, r * 0.15, p.x, p.y, r);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.35, orb.color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Mains
+  lastHands.forEach((landmarks, i) => {
+    const color = HAND_COLORS[i % HAND_COLORS.length];
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.fillStyle = color;
+    HAND_CONNECTIONS.forEach(([a, b]) => {
+      const p1 = landmarks[a], p2 = landmarks[b];
+      ctx.beginPath();
+      ctx.moveTo(p1.x * w, p1.y * h);
+      ctx.lineTo(p2.x * w, p2.y * h);
+      ctx.stroke();
+    });
+    landmarks.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x * w, p.y * h, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
+
+  // HUD
+  ctx.font = '600 20px -apple-system, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(w/2 - 90, 14, 180, 34);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('Orbes : ' + collected + ' / ' + TOTAL_ORBS, w / 2, 38);
+
+  ctx.restore();
+}
+
+/* ---------- Détection d'attrape ---------- */
+function checkCatches(canvasW, canvasH) {
+  if (!lastHands.length) return;
+  const catchPointsPx = [];
+  lastHands.forEach(landmarks => {
+    CATCH_LANDMARKS.forEach(idx => {
+      catchPointsPx.push({ x: landmarks[idx].x * canvasW, y: landmarks[idx].y * canvasH });
+    });
+  });
+  if (!catchPointsPx.length) return;
+
+  const threshold = Math.max(40, canvasW * 0.09);
+  orbs.forEach(orb => {
+    if (orb.caught || !orb._screen) return;
+    for (const pt of catchPointsPx) {
+      const dx = pt.x - orb._screen.x, dy = pt.y - orb._screen.y;
+      if (Math.sqrt(dx * dx + dy * dy) < threshold) {
+        orb.caught = true;
+        collected++;
+        break;
+      }
+    }
+  });
+
+  if (collected >= TOTAL_ORBS) {
+    setTimeout(() => { winOverlay.style.display = 'flex'; running = false; }, 200);
+  }
+}
+
+/* ---------- Boucle principale ---------- */
+function renderLoop() {
+  if (!running) return;
+
+  if (handLandmarker && video.readyState >= 2) {
+    const result = handLandmarker.detectForVideo(video, performance.now());
+    lastHands = result.landmarks || [];
+  }
+
+  // Référence (sans décalage œil) pour un calcul de collision cohérent
+  drawEye(leftCtx, leftCanvas, -calibOffset);
+  checkCatches(leftCanvas.width, leftCanvas.height);
+  drawEye(rightCtx, rightCanvas, calibOffset);
+
+  requestAnimationFrame(renderLoop);
+}
+
+/* ---------- Démarrage ---------- */
+async function initModel() {
+  statusEl.textContent = 'Chargement du modèle de détection de mains…';
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      delegate: "GPU"
+    },
+    runningMode: "VIDEO",
+    numHands: 2
+  });
+}
+
+async function startCamera() {
+  statusEl.textContent = 'Accès à la caméra arrière…';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch (e) {
+    errorEl.textContent = "Impossible d'accéder à la caméra : " + e.message;
+    throw e;
+  }
+}
+
+const needsIOSMotionPermission = typeof DeviceOrientationEvent !== 'undefined' &&
+  typeof DeviceOrientationEvent.requestPermission === 'function';
+if (needsIOSMotionPermission) iosPermBtn.style.display = 'inline-block';
+
+iosPermBtn.addEventListener('click', async () => {
+  try {
+    const state = await DeviceOrientationEvent.requestPermission();
+    if (state === 'granted') {
+      window.addEventListener('deviceorientation', onDeviceOrientation);
+      iosPermBtn.style.display = 'none';
+    }
+  } catch (e) {}
+});
+
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  try {
+    if (!needsIOSMotionPermission) {
+      window.addEventListener('deviceorientation', onDeviceOrientation);
+    }
+    await startCamera();
+    await initModel();
+    spawnOrbs();
+    overlay.style.display = 'none';
+    running = true;
+    resizeCanvases();
+    requestAnimationFrame(renderLoop);
+  } catch (e) {
+    startBtn.disabled = false;
+    statusEl.textContent = '';
+    if (!errorEl.textContent) errorEl.textContent = 'Erreur : ' + e.message;
+  }
+});
+
+document.getElementById('restartBtn').addEventListener('click', () => {
+  spawnOrbs();
+  winOverlay.style.display = 'none';
+  running = true;
+  requestAnimationFrame(renderLoop);
+});
+</script>
+</body>
+</html>
