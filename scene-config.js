@@ -7,19 +7,19 @@
 export const SCENE_CONFIG = {
 
   // --- DÉCOR (skybox) ---
-  // panorama : image "bande" à 360° qui s'enroule autour de l'horizon
-  //            (idéalement une image large, ex: 4096x1024, style panorama)
-  // top      : image plaquée au plafond (vue du dessous), ex: un ciel
-  // bottom   : image plaquée au sol (vue du dessus), ex: de l'herbe / du sable
+  // panorama : UNE SEULE image équirectangulaire à 360° qui couvre tout
+  //            autour de toi (horizon, plafond ET sol en une image).
+  //            Format attendu : ratio 2:1 (ex: 4096x2048, 2048x1024...).
+  //            C'est le format "panorama sphérique" standard, exporté par
+  //            la plupart des rendus 360° (Google Street View, rendus
+  //            Blender équirectangulaires, photos 360° de type Insta360...).
   //
-  // Chemins relatifs à ce fichier : mets tes images dans un dossier "assets/"
-  // à côté de index.html et scene-config.js, puis référence-les ici.
-  // Si une image est manquante ou introuvable, un dégradé de secours
+  // Chemin relatif à ce fichier : mets ton image dans un dossier "assets/"
+  // à côté de index.html et scene-config.js, puis référence-la ici.
+  // Si l'image est manquante ou introuvable, un dégradé de secours
   // s'affiche automatiquement (aucun crash).
   skybox: {
-    panorama: "assets/sky-panorama.jpg",
-    top: "assets/sky-top.jpg",
-    bottom: "assets/sky-bottom.jpg"
+    panorama: "assets/sky-panorama.jpg"
   },
 
   // --- MODÈLES 3D ---
