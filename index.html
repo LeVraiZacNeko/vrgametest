@@ -8,14 +8,18 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Orbes VR">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2316213e'/%3E%3Ctext x='50' y='65' font-size='55' text-anchor='middle'%3E%F0%9F%A5%BD%3C/text%3E%3C/svg%3E">
-<script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe-master.min.js"></script>
 <style>
   :root { color-scheme: dark; }
-  html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; font-family: -apple-system, Arial, sans-serif; }
-  a-scene { width:100vw; height:100vh; }
+  html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; font-family:-apple-system, Arial, sans-serif; }
+  #video { display:none; }
+  canvas#gl {
+    position:fixed; inset:0; display:block;
+    padding-left:env(safe-area-inset-left,0px);
+    padding-right:env(safe-area-inset-right,0px);
+  }
+  #divider { position:fixed; top:0; bottom:0; left:50%; width:1px; background:rgba(255,255,255,0.12); z-index:5; pointer-events:none; }
 
-  #startOverlay {
+  #overlay {
     position:fixed; inset:0; z-index:20;
     background:radial-gradient(circle at center, #16213e 0%, #05070f 100%);
     color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -23,20 +27,48 @@
     padding-top:calc(24px + env(safe-area-inset-top,0px));
     padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));
   }
-  #startOverlay h1 { font-size:1.5rem; margin:0 0 12px; }
-  #startOverlay p { font-size:0.95rem; line-height:1.5; max-width:340px; color:#c9d2e3; margin:0 0 20px; }
+  #overlay h1 { font-size:1.4rem; margin:0 0 10px; }
+  #overlay p { font-size:0.88rem; line-height:1.5; max-width:340px; color:#c9d2e3; margin:0 0 14px; }
   .bigBtn {
-    padding:16px 28px; font-size:1.05rem; border:none; border-radius:14px;
+    padding:15px 26px; font-size:1rem; border:none; border-radius:14px;
     background:#5b8cff; color:#fff; font-weight:600; box-shadow:0 6px 18px rgba(91,140,255,0.4);
-    margin-bottom:12px; min-width:220px;
+    margin-bottom:10px; min-width:230px;
   }
   .bigBtn:active { transform:scale(0.97); }
-  #iosPermBtn { display:none; background:#ff9f5b; box-shadow:0 6px 18px rgba(255,159,91,0.4); }
+  #status { font-size:0.82rem; color:#8ea0c9; min-height:18px; }
+  #errorMsg { color:#ff8080; font-size:0.82rem; max-width:320px; }
+
+  #rotateHint {
+    position:fixed; inset:0; z-index:25; background:#05070f; color:#fff;
+    display:none; align-items:center; justify-content:center; flex-direction:column;
+    text-align:center; padding:24px;
+  }
+  #rotateHint.show { display:flex; }
 
   #hud {
     position:fixed; top:calc(14px + env(safe-area-inset-top,0px)); left:0; right:0;
-    z-index:10; text-align:center; color:#fff; font-size:1.1rem;
-    text-shadow:0 2px 6px rgba(0,0,0,0.8); pointer-events:none; font-weight:600;
+    z-index:10; text-align:center; color:#fff; font-size:1.05rem; font-weight:600;
+    text-shadow:0 2px 6px rgba(0,0,0,0.8); pointer-events:none;
+  }
+
+  #calibToggle {
+    position:fixed; z-index:15; bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    right:calc(14px + env(safe-area-inset-right,0px));
+    width:38px; height:38px; border-radius:50%; border:none;
+    background:rgba(255,255,255,0.15); color:#fff; font-size:1rem;
+  }
+  #calibPanel {
+    position:fixed; z-index:15; bottom:calc(58px + env(safe-area-inset-bottom,0px));
+    right:calc(14px + env(safe-area-inset-right,0px));
+    background:rgba(10,14,24,0.9); border-radius:12px; padding:10px;
+    display:none; flex-direction:column; align-items:center; gap:6px;
+  }
+  #calibPanel.show { display:flex; }
+  #calibPanel span { color:#c9d2e3; font-size:0.75rem; }
+  #calibPanel .row { display:flex; gap:6px; }
+  #calibPanel button {
+    width:36px; height:36px; border-radius:8px; border:none;
+    background:rgba(255,255,255,0.15); color:#fff; font-size:1.1rem;
   }
 
   #winOverlay {
@@ -44,185 +76,492 @@
     background:rgba(5,7,15,0.92); color:#fff; flex-direction:column;
     align-items:center; justify-content:center; text-align:center; padding:24px; box-sizing:border-box;
   }
-  #winOverlay h1 { font-size:1.8rem; margin:0 0 8px; }
+  #winOverlay h1 { font-size:1.7rem; margin:0 0 8px; }
   #winOverlay p { color:#c9d2e3; margin:0 0 20px; }
 </style>
 </head>
 <body>
 
+<video id="video" playsinline muted></video>
+<canvas id="gl"></canvas>
+<div id="divider"></div>
 <div id="hud">Orbes : <span id="score">0</span> / <span id="total">8</span></div>
 
-<div id="startOverlay">
-  <h1>🥽 Chasse aux Orbes</h1>
-  <p>Insère ton téléphone dans le boîtier cardboard après avoir lancé la VR.
-  Regarde une orbe et fixe-la une seconde pour la collecter. Collecte les 8 orbes !</p>
-  <button id="iosPermBtn" class="bigBtn">Activer les capteurs de mouvement</button>
-  <button id="fullscreenBtn" class="bigBtn" style="display:none;">Passer en plein écran</button>
-  <p id="iosFullscreenHint" style="display:none; font-size:0.85rem; color:#8ea0c9; max-width:320px;">
-    📱 Sur iPhone : pour un vrai plein écran, ajoute cette page à ton écran d'accueil
-    (bouton Partager → « Sur l'écran d'accueil »), puis relance-la depuis l'icône créée.
+<button id="calibToggle">⚙️</button>
+<div id="calibPanel">
+  <span>Écart entre les yeux</span>
+  <div class="row">
+    <button id="calibLeft">◀</button>
+    <button id="calibReset">⟳</button>
+    <button id="calibRight">▶</button>
+  </div>
+</div>
+
+<div id="rotateHint">
+  <div style="font-size:2.5rem; margin-bottom:12px;">📱↻</div>
+  <p>Tourne ton téléphone en mode paysage pour utiliser le boîtier cardboard.</p>
+</div>
+
+<div id="overlay">
+  <h1>🖐️ Chasse aux Orbes VR</h1>
+  <p>
+    Regarde autour de toi (gyroscope) et attrape les orbes avec tes vraies mains,
+    représentées en 3D. Le décor et les modèles se règlent dans scene-config.js.
   </p>
-  <button id="startBtn" class="bigBtn">Lancer le jeu</button>
+  <button id="iosPermBtn" class="bigBtn" style="display:none;">Activer les capteurs de mouvement</button>
+  <button id="startBtn" class="bigBtn">Démarrer</button>
+  <p id="status"></p>
+  <p id="errorMsg"></p>
 </div>
 
 <div id="winOverlay">
   <h1>🎉 Bravo !</h1>
-  <p>Tu as collecté toutes les orbes.</p>
+  <p>Tu as attrapé toutes les orbes.</p>
   <button id="restartBtn" class="bigBtn">Rejouer</button>
 </div>
 
-<a-scene vr-mode-ui="enterVRButton: #enterVRButton" embedded loading-screen="enabled:false" renderer="colorManagement:true">
-  <a-assets>
-    <img id="skyTex" crossorigin="anonymous" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiMwYTBlMWYiLz48L3N2Zz4=">
-  </a-assets>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+import { SCENE_CONFIG } from "./scene-config.js";
 
-  <a-sky color="#0a0e1f"></a-sky>
+/* ---------- DOM ---------- */
+const video = document.getElementById('video');
+const glCanvas = document.getElementById('gl');
+const overlay = document.getElementById('overlay');
+const winOverlay = document.getElementById('winOverlay');
+const statusEl = document.getElementById('status');
+const errorEl = document.getElementById('errorMsg');
+const startBtn = document.getElementById('startBtn');
+const iosPermBtn = document.getElementById('iosPermBtn');
+const rotateHint = document.getElementById('rotateHint');
+const calibToggle = document.getElementById('calibToggle');
+const calibPanel = document.getElementById('calibPanel');
+const scoreEl = document.getElementById('score');
+const totalEl = document.getElementById('total');
 
-  <!-- étoiles décoratives -->
-  <a-entity id="stars"></a-entity>
+/* ---------- Three.js : scène, rig stéréo ---------- */
+const scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  <a-entity id="rig" position="0 1.6 0">
-    <a-camera id="cam" look-controls="reverseMouseDrag:false" wasd-controls-enabled="false">
-      <a-entity cursor="fuse:true;fuseTimeout:1000"
-                position="0 0 -1"
-                geometry="primitive:ring;radiusInner:0.006;radiusOuter:0.011"
-                material="color:#5b8cff;shader:flat;opacity:0.9"
-                animation__click="property:scale;startEvents:click;from:1.4 1.4 1.4;to:1 1 1;dur:250">
-      </a-entity>
-    </a-camera>
-  </a-entity>
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+sun.position.set(2, 4, 3);
+scene.add(sun);
 
-  <a-entity id="orbContainer"></a-entity>
+const rig = new THREE.Group();
+rig.position.set(0, 1.6, 0);
+scene.add(rig);
 
-  <!-- sol pour repère visuel -->
-  <a-entity geometry="primitive:circle;radius:20;segments:48"
-             rotation="-90 0 0" position="0 0 0"
-             material="color:#12172b;shader:flat;side:double">
-  </a-entity>
-</a-scene>
+let eyeSep = parseFloat(localStorage.getItem('vrEyeSep') || '0.064');
+const VFOV_DEG = 75;
+const cameraLeft = new THREE.PerspectiveCamera(VFOV_DEG, 1, 0.05, 100);
+const cameraRight = new THREE.PerspectiveCamera(VFOV_DEG, 1, 0.05, 100);
+rig.add(cameraLeft, cameraRight);
+function applyEyeSeparation() {
+  cameraLeft.position.set(-eyeSep / 2, 0, 0);
+  cameraRight.position.set(eyeSep / 2, 0, 0);
+}
+applyEyeSeparation();
 
-<script>
-(function () {
-  var TOTAL = 8;
-  var collected = 0;
-  var scoreEl = document.getElementById('score');
-  document.getElementById('total').textContent = TOTAL;
-  var scene = document.querySelector('a-scene');
-  var container = document.getElementById('orbContainer');
-  var starsEl = document.getElementById('stars');
+/* ---------- Redimensionnement (correction viewport iOS) ---------- */
+function getViewportSize() {
+  if (window.visualViewport) return { w: window.visualViewport.width, h: window.visualViewport.height };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+function resizeRenderer() {
+  const { w, h } = getViewportSize();
+  renderer.setSize(w, h, false);
+  const eyeAspect = (w / 2) / h;
+  cameraLeft.aspect = eyeAspect; cameraLeft.updateProjectionMatrix();
+  cameraRight.aspect = eyeAspect; cameraRight.updateProjectionMatrix();
+  rotateHint.classList.toggle('show', h > w);
+}
+window.addEventListener('resize', resizeRenderer);
+window.addEventListener('orientationchange', () => setTimeout(resizeRenderer, 300));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeRenderer);
+resizeRenderer();
 
-  // Étoiles décoratives (statiques, esthétique)
-  for (var s = 0; s < 60; s++) {
-    var star = document.createElement('a-entity');
-    var r = 15;
-    var theta = Math.random() * Math.PI * 2;
-    var phi = Math.random() * Math.PI * 0.6 + 0.1;
-    var x = r * Math.sin(phi) * Math.cos(theta);
-    var y = r * Math.cos(phi) + 1;
-    var z = r * Math.sin(phi) * Math.sin(theta);
-    star.setAttribute('geometry', 'primitive:sphere;radius:0.03');
-    star.setAttribute('material', 'color:#ffffff;shader:flat;opacity:' + (0.4 + Math.random()*0.6));
-    star.setAttribute('position', x + ' ' + y + ' ' + z);
-    starsEl.appendChild(star);
-  }
+/* ---------- Calibration (écart interoculaire) ---------- */
+calibToggle.addEventListener('click', () => calibPanel.classList.toggle('show'));
+document.getElementById('calibLeft').addEventListener('click', () => setEyeSep(eyeSep - 0.004));
+document.getElementById('calibRight').addEventListener('click', () => setEyeSep(eyeSep + 0.004));
+document.getElementById('calibReset').addEventListener('click', () => setEyeSep(0.064));
+function setEyeSep(v) {
+  eyeSep = Math.max(0.03, Math.min(0.09, v));
+  localStorage.setItem('vrEyeSep', String(eyeSep));
+  applyEyeSeparation();
+}
 
-  var colors = ['#ff6b6b', '#5bffb0', '#5b8cff', '#ffd15b', '#c85bff', '#5bf0ff', '#ff5bb0', '#a3ff5b'];
+/* ---------- Orientation de l'appareil -> rotation du rig ---------- */
+const zee = new THREE.Vector3(0, 0, 1);
+const euler = new THREE.Euler();
+const q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 
-  function randomOrbPosition() {
-    var radius = 2.6 + Math.random() * 1.4;
-    var theta = Math.random() * Math.PI * 2;
-    var phi = (Math.random() * 0.8 + 0.15) * Math.PI * 0.5; // évite trop haut/bas
-    var x = radius * Math.sin(phi) * Math.cos(theta);
-    var y = 1.6 + radius * Math.cos(phi) * 0.6;
-    var z = radius * Math.sin(phi) * Math.sin(theta);
-    return x + ' ' + Math.max(0.4, y) + ' ' + z;
-  }
+function getScreenOrientAngle() {
+  if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+  return window.orientation || 0;
+}
+function onDeviceOrientation(e) {
+  const alpha = THREE.MathUtils.degToRad(e.alpha || 0);
+  const beta = THREE.MathUtils.degToRad(e.beta || 0);
+  const gamma = THREE.MathUtils.degToRad(e.gamma || 0);
+  const orient = THREE.MathUtils.degToRad(getScreenOrientAngle());
+  euler.set(beta, alpha, -gamma, 'YXZ');
+  rig.quaternion.setFromEuler(euler);
+  rig.quaternion.multiply(q1);
+  rig.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
+}
 
-  function spawnOrb(index) {
-    var orb = document.createElement('a-entity');
-    orb.setAttribute('geometry', 'primitive:sphere;radius:0.22;segments-width:16;segments-height:16');
-    orb.setAttribute('material', 'color:' + colors[index % colors.length] + ';shader:standard;emissive:' + colors[index % colors.length] + ';emissiveIntensity:0.5;metalness:0.1;roughness:0.3');
-    orb.setAttribute('position', randomOrbPosition());
-    orb.setAttribute('animation__float', 'property:position;dir:alternate;dur:2000;loop:true;easing:easeInOutSine;to:' + floatOffset(orb));
-    orb.setAttribute('animation__spin', 'property:rotation;to:0 360 0;loop:true;dur:4000;easing:linear');
-    orb.classList.add('collectible');
+/* ---------- Skybox : panorama (cylindre) + capuchons haut/bas ---------- */
+const texLoader = new THREE.TextureLoader();
+function makeFallbackTexture(colorTop, colorBottom) {
+  const c = document.createElement('canvas'); c.width = 2; c.height = 256;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, colorTop); grad.addColorStop(1, colorBottom);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, 2, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function loadTexture(url, fallback) {
+  return new Promise(resolve => {
+    if (!url) return resolve(fallback);
+    texLoader.load(url, tex => { tex.colorSpace = THREE.SRGBColorSpace; resolve(tex); }, undefined, () => resolve(fallback));
+  });
+}
 
-    orb.addEventListener('click', function onClick() {
-      orb.removeEventListener('click', onClick);
-      orb.setAttribute('animation__pop', 'property:scale;to:0 0 0;dur:220;easing:easeInBack');
-      setTimeout(function () { container.removeChild(orb); }, 230);
-      collected++;
-      scoreEl.textContent = collected;
-      if (collected >= TOTAL) {
-        setTimeout(function () {
-          document.getElementById('winOverlay').style.display = 'flex';
-        }, 300);
-      }
-    });
+async function buildSkybox() {
+  const skyRadius = 40, skyHeight = 60;
+  const [panoTex, topTex, bottomTex] = await Promise.all([
+    loadTexture(SCENE_CONFIG.skybox.panorama, makeFallbackTexture('#3a5c8c', '#0e1a2e')),
+    loadTexture(SCENE_CONFIG.skybox.top, makeFallbackTexture('#2c4a78', '#12203a')),
+    loadTexture(SCENE_CONFIG.skybox.bottom, makeFallbackTexture('#1c2b1c', '#0a120a'))
+  ]);
 
-    container.appendChild(orb);
-  }
+  const bandGeo = new THREE.CylinderGeometry(skyRadius, skyRadius, skyHeight, 64, 1, true);
+  const bandMat = new THREE.MeshBasicMaterial({ map: panoTex, side: THREE.BackSide });
+  scene.add(new THREE.Mesh(bandGeo, bandMat));
 
-  function floatOffset(el) {
-    var p = el.getAttribute('position');
-    return p.x + ' ' + (p.y + 0.25) + ' ' + p.z;
-  }
+  const capGeo = new THREE.CircleGeometry(skyRadius, 48);
+  const topMat = new THREE.MeshBasicMaterial({ map: topTex, side: THREE.BackSide });
+  const topCap = new THREE.Mesh(capGeo, topMat);
+  topCap.position.y = skyHeight / 2;
+  topCap.rotation.x = Math.PI / 2;
+  scene.add(topCap);
 
-  function startGame() {
-    collected = 0;
-    scoreEl.textContent = 0;
-    container.innerHTML = '';
-    for (var i = 0; i < TOTAL; i++) spawnOrb(i);
-    document.getElementById('winOverlay').style.display = 'none';
-    document.getElementById('startOverlay').style.display = 'none';
-  }
+  const bottomMat = new THREE.MeshBasicMaterial({ map: bottomTex, side: THREE.BackSide });
+  const bottomCap = new THREE.Mesh(capGeo, bottomMat);
+  bottomCap.position.y = -skyHeight / 2;
+  bottomCap.rotation.x = -Math.PI / 2;
+  scene.add(bottomCap);
+}
 
-  // Plein écran : natif si dispo (Android/desktop), sinon message iOS "Add to Home Screen"
-  var isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var isStandalone = window.navigator.standalone === true ||
-    window.matchMedia('(display-mode: standalone)').matches;
-  var fsBtn = document.getElementById('fullscreenBtn');
-  var iosHint = document.getElementById('iosFullscreenHint');
+/* ---------- Modèles 3D configurables ---------- */
+const gltfLoader = new GLTFLoader();
+const mixers = [];
+function loadConfiguredModels() {
+  (SCENE_CONFIG.models || []).forEach(cfg => {
+    gltfLoader.load(cfg.url, gltf => {
+      const obj = gltf.scene;
+      const p = cfg.position || [0, 0, 0];
+      obj.position.set(p[0], p[1], p[2]);
+      const r = cfg.rotation || [0, 0, 0];
+      obj.rotation.set(
+        THREE.MathUtils.degToRad(r[0]), THREE.MathUtils.degToRad(r[1]), THREE.MathUtils.degToRad(r[2])
+      );
+      const s = cfg.scale != null ? cfg.scale : 1;
+      if (Array.isArray(s)) obj.scale.set(s[0], s[1], s[2]); else obj.scale.setScalar(s);
+      scene.add(obj);
 
-  if (isIOS && !isStandalone) {
-    iosHint.style.display = 'block';
-  } else if (document.documentElement.requestFullscreen) {
-    fsBtn.style.display = 'inline-block';
-    fsBtn.addEventListener('click', function () {
-      document.documentElement.requestFullscreen().catch(function () {});
-    });
-  }
-
-  // Permission gyroscope iOS 13+
-  var needsIOSPermission = typeof DeviceOrientationEvent !== 'undefined' &&
-    typeof DeviceOrientationEvent.requestPermission === 'function';
-  var iosBtn = document.getElementById('iosPermBtn');
-  if (needsIOSPermission) {
-    iosBtn.style.display = 'inline-block';
-    iosBtn.addEventListener('click', function () {
-      DeviceOrientationEvent.requestPermission().then(function (state) {
-        if (state === 'granted') {
-          iosBtn.style.display = 'none';
+      if (cfg.animation && gltf.animations && gltf.animations.length) {
+        const mixer = new THREE.AnimationMixer(obj);
+        let clip = gltf.animations[0];
+        if (typeof cfg.animation === 'string') {
+          clip = gltf.animations.find(c => c.name === cfg.animation) || clip;
         }
-      }).catch(function () {});
+        mixer.clipAction(clip).play();
+        mixers.push(mixer);
+      }
+    }, undefined, err => {
+      console.warn('Modèle introuvable :', cfg.url, err);
+      const errBox = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.4, 0.4),
+        new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true })
+      );
+      const p = cfg.position || [0, 0, 0];
+      errBox.position.set(p[0], p[1], p[2]);
+      scene.add(errBox);
     });
-  }
+  });
+}
 
-  document.getElementById('startBtn').addEventListener('click', function () {
-    startGame();
-    // tente d'entrer directement en mode VR (stéréo) si possible
-    if (scene.hasLoaded) {
-      scene.components['vr-mode-ui'] && scene.enterVR();
-    } else {
-      scene.addEventListener('loaded', function () { scene.enterVR(); });
+/* ---------- Orbes ---------- */
+const TOTAL_ORBS = 8;
+let collected = 0;
+totalEl.textContent = TOTAL_ORBS;
+const colors = [0xff6b6b, 0x5bffb0, 0x5b8cff, 0xffd15b, 0xc85bff, 0x5bf0ff, 0xff5bb0, 0xa3ff5b];
+let orbs = [];
+
+function randomOrbPosition() {
+  const radius = 2.6 + Math.random() * 1.4;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = (Math.random() * 0.8 + 0.15) * Math.PI * 0.5;
+  const x = radius * Math.sin(phi) * Math.cos(theta);
+  const y = 0.3 + radius * Math.cos(phi) * 0.6;
+  const z = radius * Math.sin(phi) * Math.sin(theta);
+  return new THREE.Vector3(x, y - 1.0, z);
+}
+
+const orbGroup = new THREE.Group();
+rig.parent.add(orbGroup);
+function spawnOrbs() {
+  orbGroup.clear();
+  orbs = [];
+  for (let i = 0; i < TOTAL_ORBS; i++) {
+    const color = colors[i % colors.length];
+    const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.3 });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 20), mat);
+    mesh.position.copy(randomOrbPosition()).add(rig.position);
+    orbGroup.add(mesh);
+    orbs.push({ mesh, caught: false, pulsePhase: Math.random() * Math.PI * 2 });
+  }
+  collected = 0;
+  scoreEl.textContent = 0;
+}
+
+/* ---------- Projection écran (pour la détection d'attrape) ---------- */
+const _forward = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.Vector3(), _dir = new THREE.Vector3();
+function worldToEyePixels(worldPos, eyeW, eyeH) {
+  _forward.set(0, 0, -1).applyQuaternion(rig.quaternion);
+  _right.set(1, 0, 0).applyQuaternion(rig.quaternion);
+  _up.set(0, 1, 0).applyQuaternion(rig.quaternion);
+  _dir.copy(worldPos).sub(rig.position);
+
+  const forward = _dir.dot(_forward);
+  if (forward <= 0.05) return null;
+  const right = _dir.dot(_right), up = _dir.dot(_up);
+  const vFov = THREE.MathUtils.degToRad(VFOV_DEG);
+  const aspect = eyeW / eyeH;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const ndcX = (right / forward) / Math.tan(hFov / 2);
+  const ndcY = (up / forward) / Math.tan(vFov / 2);
+  return { x: (ndcX * 0.5 + 0.5) * eyeW, y: (0.5 - ndcY * 0.5) * eyeH };
+}
+
+/* ---------- Mains 3D (reconstruites à partir du suivi) ---------- */
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],
+  [0,17]
+];
+const CATCH_LANDMARKS = [0, 4, 8, 12, 16, 20];
+const HAND_COLORS = [0x5bffb0, 0x5b8cff];
+
+function makeHandRig(color) {
+  const group = new THREE.Group();
+  const jointMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4 });
+  const boneMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5 });
+  const joints = [];
+  for (let i = 0; i < 21; i++) {
+    const j = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 8), jointMat);
+    group.add(j); joints.push(j);
+  }
+  const bones = [];
+  HAND_CONNECTIONS.forEach(() => {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 1, 6), boneMat);
+    group.add(b); bones.push(b);
+  });
+  group.visible = false;
+  scene.add(group);
+  return { group, joints, bones };
+}
+const handRigs = [makeHandRig(HAND_COLORS[0]), makeHandRig(HAND_COLORS[1])];
+
+const HAND_BASE_DIST = 0.55;
+const HAND_Z_SCALE = 1.4;
+function landmarkToWorld(landmark, eyeW, eyeH) {
+  const ndcX = (landmark.x - 0.5) * 2;
+  const ndcY = (0.5 - landmark.y) * 2;
+  const dist = Math.max(0.25, Math.min(1.2, HAND_BASE_DIST - landmark.z * HAND_Z_SCALE));
+  const vFov = THREE.MathUtils.degToRad(VFOV_DEG);
+  const aspect = eyeW / eyeH;
+  const halfH = dist * Math.tan(vFov / 2);
+  const halfW = halfH * aspect;
+
+  _forward.set(0, 0, -1).applyQuaternion(rig.quaternion);
+  _right.set(1, 0, 0).applyQuaternion(rig.quaternion);
+  _up.set(0, 1, 0).applyQuaternion(rig.quaternion);
+
+  return new THREE.Vector3()
+    .copy(rig.position)
+    .addScaledVector(_forward, dist)
+    .addScaledVector(_right, ndcX * halfW)
+    .addScaledVector(_up, ndcY * halfH);
+}
+
+const _boneA = new THREE.Vector3(), _boneB = new THREE.Vector3(), _boneMid = new THREE.Vector3(), _boneDir = new THREE.Vector3();
+function updateHandMeshes(handsLandmarks, eyeW, eyeH) {
+  handRigs.forEach((rigMesh, i) => {
+    const landmarks = handsLandmarks[i];
+    if (!landmarks) { rigMesh.group.visible = false; return; }
+    rigMesh.group.visible = true;
+    const worldPts = landmarks.map(l => landmarkToWorld(l, eyeW, eyeH));
+    worldPts.forEach((p, idx) => rigMesh.joints[idx].position.copy(p));
+    HAND_CONNECTIONS.forEach(([a, b], idx) => {
+      _boneA.copy(worldPts[a]); _boneB.copy(worldPts[b]);
+      _boneMid.addVectors(_boneA, _boneB).multiplyScalar(0.5);
+      _boneDir.subVectors(_boneB, _boneA);
+      const len = _boneDir.length();
+      const bone = rigMesh.bones[idx];
+      bone.position.copy(_boneMid);
+      bone.scale.set(1, Math.max(len, 0.001), 1);
+      if (len > 0.0001) bone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _boneDir.clone().normalize());
+    });
+  });
+}
+
+/* ---------- Détection d'attrape ---------- */
+function checkCatches(handsLandmarks, eyeW, eyeH) {
+  if (!handsLandmarks.length) return;
+  const catchPx = [];
+  handsLandmarks.forEach(landmarks => {
+    CATCH_LANDMARKS.forEach(idx => catchPx.push({ x: landmarks[idx].x * eyeW, y: landmarks[idx].y * eyeH }));
+  });
+  const threshold = Math.max(45, eyeW * 0.09);
+  orbs.forEach(orb => {
+    if (orb.caught) return;
+    const p = worldToEyePixels(orb.mesh.position, eyeW, eyeH);
+    if (!p) return;
+    for (const pt of catchPx) {
+      const dx = pt.x - p.x, dy = pt.y - p.y;
+      if (Math.sqrt(dx * dx + dy * dy) < threshold) {
+        orb.caught = true;
+        orb.mesh.visible = false;
+        collected++;
+        scoreEl.textContent = collected;
+        break;
+      }
     }
   });
+  if (collected >= TOTAL_ORBS) {
+    setTimeout(() => { winOverlay.style.display = 'flex'; running = false; }, 200);
+  }
+}
 
-  document.getElementById('restartBtn').addEventListener('click', function () {
-    startGame();
+/* ---------- Suivi de main (MediaPipe) ---------- */
+let handLandmarker = null;
+let running = false;
+const clock = new THREE.Clock();
+
+async function initHandModel() {
+  statusEl.textContent = 'Chargement du modèle de détection de mains…';
+  const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      delegate: "GPU"
+    },
+    runningMode: "VIDEO",
+    numHands: 2
   });
-})();
+}
+async function startCamera() {
+  statusEl.textContent = 'Accès à la caméra (pour le suivi des mains uniquement)…';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    video.srcObject = stream;
+    await video.play();
+  } catch (e) {
+    errorEl.textContent = "Impossible d'accéder à la caméra : " + e.message;
+    throw e;
+  }
+}
+
+/* ---------- Boucle de rendu ---------- */
+function renderLoop() {
+  if (!running) return;
+  const delta = clock.getDelta();
+  mixers.forEach(m => m.update(delta));
+
+  const { w, h } = getViewportSize();
+  const eyeW = w / 2, eyeH = h;
+  let hands = [];
+  if (handLandmarker && video.readyState >= 2) {
+    const result = handLandmarker.detectForVideo(video, performance.now());
+    hands = result.landmarks || [];
+  }
+  updateHandMeshes(hands, eyeW, eyeH);
+  checkCatches(hands, eyeW, eyeH);
+
+  orbs.forEach(o => {
+    if (o.caught) return;
+    o.pulsePhase += delta * 2;
+    const s = 1 + 0.06 * Math.sin(o.pulsePhase);
+    o.mesh.scale.setScalar(s);
+  });
+
+  renderer.setScissorTest(true);
+  const fullW = renderer.domElement.width, fullH = renderer.domElement.height;
+  renderer.setViewport(0, 0, fullW / 2, fullH);
+  renderer.setScissor(0, 0, fullW / 2, fullH);
+  renderer.render(scene, cameraLeft);
+  renderer.setViewport(fullW / 2, 0, fullW / 2, fullH);
+  renderer.setScissor(fullW / 2, 0, fullW / 2, fullH);
+  renderer.render(scene, cameraRight);
+
+  requestAnimationFrame(renderLoop);
+}
+
+/* ---------- Démarrage / permissions ---------- */
+const needsIOSMotionPermission = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
+if (needsIOSMotionPermission) iosPermBtn.style.display = 'inline-block';
+
+iosPermBtn.addEventListener('click', async () => {
+  try {
+    const state = await DeviceOrientationEvent.requestPermission();
+    if (state === 'granted') {
+      window.addEventListener('deviceorientation', onDeviceOrientation);
+      iosPermBtn.style.display = 'none';
+    }
+  } catch (e) {}
+});
+
+await buildSkybox();
+loadConfiguredModels();
+
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  try {
+    if (!needsIOSMotionPermission) window.addEventListener('deviceorientation', onDeviceOrientation);
+    await startCamera();
+    await initHandModel();
+    spawnOrbs();
+    overlay.style.display = 'none';
+    running = true;
+    resizeRenderer();
+    requestAnimationFrame(renderLoop);
+  } catch (e) {
+    startBtn.disabled = false;
+    statusEl.textContent = '';
+    if (!errorEl.textContent) errorEl.textContent = 'Erreur : ' + e.message;
+  }
+});
+
+document.getElementById('restartBtn').addEventListener('click', () => {
+  spawnOrbs();
+  winOverlay.style.display = 'none';
+  running = true;
+  requestAnimationFrame(renderLoop);
+});
 </script>
 </body>
 </html>
