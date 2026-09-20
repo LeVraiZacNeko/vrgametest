@@ -217,13 +217,16 @@ function onDeviceOrientation(e) {
   rig.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
 }
 
-/* ---------- Skybox : panorama (cylindre) + capuchons haut/bas ---------- */
+/* ---------- Skybox : sphère équirectangulaire à 360° ---------- */
 const texLoader = new THREE.TextureLoader();
-function makeFallbackTexture(colorTop, colorBottom) {
+function makeFallbackTexture() {
+  // Dégradé vertical : sert d'équirectangulaire de secours (haut clair -> bas sombre)
   const c = document.createElement('canvas'); c.width = 2; c.height = 256;
   const ctx = c.getContext('2d');
   const grad = ctx.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, colorTop); grad.addColorStop(1, colorBottom);
+  grad.addColorStop(0, '#3a5c8c');
+  grad.addColorStop(0.55, '#16213e');
+  grad.addColorStop(1, '#0a120a');
   ctx.fillStyle = grad; ctx.fillRect(0, 0, 2, 256);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -237,29 +240,16 @@ function loadTexture(url, fallback) {
 }
 
 async function buildSkybox() {
-  const skyRadius = 40, skyHeight = 60;
-  const [panoTex, topTex, bottomTex] = await Promise.all([
-    loadTexture(SCENE_CONFIG.skybox.panorama, makeFallbackTexture('#3a5c8c', '#0e1a2e')),
-    loadTexture(SCENE_CONFIG.skybox.top, makeFallbackTexture('#2c4a78', '#12203a')),
-    loadTexture(SCENE_CONFIG.skybox.bottom, makeFallbackTexture('#1c2b1c', '#0a120a'))
-  ]);
+  const panoTex = await loadTexture(SCENE_CONFIG.skybox.panorama, makeFallbackTexture());
+  panoTex.wrapS = THREE.RepeatWrapping;
 
-  const bandGeo = new THREE.CylinderGeometry(skyRadius, skyRadius, skyHeight, 64, 1, true);
-  const bandMat = new THREE.MeshBasicMaterial({ map: panoTex, side: THREE.BackSide });
-  scene.add(new THREE.Mesh(bandGeo, bandMat));
-
-  const capGeo = new THREE.CircleGeometry(skyRadius, 48);
-  const topMat = new THREE.MeshBasicMaterial({ map: topTex, side: THREE.BackSide });
-  const topCap = new THREE.Mesh(capGeo, topMat);
-  topCap.position.y = skyHeight / 2;
-  topCap.rotation.x = Math.PI / 2;
-  scene.add(topCap);
-
-  const bottomMat = new THREE.MeshBasicMaterial({ map: bottomTex, side: THREE.BackSide });
-  const bottomCap = new THREE.Mesh(capGeo, bottomMat);
-  bottomCap.position.y = -skyHeight / 2;
-  bottomCap.rotation.x = -Math.PI / 2;
-  scene.add(bottomCap);
+  // Sphère vue de l'intérieur (BackSide) : le mapping UV par défaut d'une
+  // SphereGeometry correspond exactement à une projection équirectangulaire
+  // (u = longitude/horizon, v = latitude/haut-bas), donc aucune conversion
+  // n'est nécessaire pour une image panorama 360° classique.
+  const skyGeo = new THREE.SphereGeometry(40, 64, 40);
+  const skyMat = new THREE.MeshBasicMaterial({ map: panoTex, side: THREE.BackSide });
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
 }
 
 /* ---------- Modèles 3D configurables ---------- */
