@@ -120,6 +120,14 @@
   <button id="restartBtn" class="bigBtn">Rejouer</button>
 </div>
 
+<script>
+  window.addEventListener('error', function (e) {
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;top:10px;left:10px;right:10px;z-index:999;background:#3a0d0d;color:#ffb3b3;padding:10px;border-radius:8px;font-size:12px;font-family:monospace;max-height:40vh;overflow:auto;';
+    box.textContent = 'Erreur JS : ' + (e.message || e.error) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
+    document.body.appendChild(box);
+  });
+</script>
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
@@ -525,9 +533,6 @@ iosPermBtn.addEventListener('click', async () => {
   } catch (e) {}
 });
 
-await buildSkybox();
-loadConfiguredModels();
-
 startBtn.addEventListener('click', async () => {
   startBtn.disabled = true;
   try {
@@ -545,6 +550,9 @@ startBtn.addEventListener('click', async () => {
     if (!errorEl.textContent) errorEl.textContent = 'Erreur : ' + e.message;
   }
 });
+
+await buildSkybox();
+loadConfiguredModels();
 
 document.getElementById('restartBtn').addEventListener('click', () => {
   spawnOrbs();
