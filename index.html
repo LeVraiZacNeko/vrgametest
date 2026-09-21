@@ -97,7 +97,7 @@
 
 <button id="calibToggle">⚙️</button>
 <div id="calibPanel">
-  <span>Écart entre les yeux</span>
+  <span>Centrage de l'image</span>
   <div class="row">
     <button id="calibLeft">◀</button>
     <button id="calibReset">⟳</button>
@@ -185,19 +185,11 @@ const rig = new THREE.Group();
 rig.position.set(0, 1.6, 0);
 scene.add(rig);
 
-let eyeSep = parseFloat(localStorage.getItem('vrEyeSep') || '0.064');
+const MARGIN_FRAC = 0.08; // marge horizontale sacrifiée pour permettre le recadrage (8%)
+let eyeShiftPx = parseFloat(localStorage.getItem('vrEyeShiftPx') || '0');
 const VFOV_DEG = 75;
-const cameraLeft = new THREE.PerspectiveCamera(VFOV_DEG, 1, 0.05, 100);
-const cameraRight = new THREE.PerspectiveCamera(VFOV_DEG, 1, 0.05, 100);
-rig.add(cameraLeft, cameraRight);
-function applyEyeSeparation() {
-  cameraLeft.position.set(-eyeSep / 2, 0, 0);
-  cameraRight.position.set(eyeSep / 2, 0, 0);
-  const toeInRad = THREE.MathUtils.degToRad(1.4);
-  cameraLeft.rotation.set(0, toeInRad, 0);
-  cameraRight.rotation.set(0, -toeInRad, 0);
-}
-applyEyeSeparation();
+const cameraMain = new THREE.PerspectiveCamera(VFOV_DEG, 1, 0.05, 100);
+rig.add(cameraMain);
 
 /* ---------- Redimensionnement (correction viewport iOS) ---------- */
 function getViewportSize() {
@@ -207,9 +199,6 @@ function getViewportSize() {
 function resizeRenderer() {
   const { w, h } = getViewportSize();
   renderer.setSize(w, h, false);
-  const eyeAspect = (w / 2) / h;
-  cameraLeft.aspect = eyeAspect; cameraLeft.updateProjectionMatrix();
-  cameraRight.aspect = eyeAspect; cameraRight.updateProjectionMatrix();
   rotateHint.classList.toggle('show', h > w);
 }
 window.addEventListener('resize', resizeRenderer);
@@ -217,11 +206,11 @@ window.addEventListener('orientationchange', () => setTimeout(resizeRenderer, 30
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeRenderer);
 resizeRenderer();
 
-/* ---------- Calibration (écart interoculaire) ---------- */
+/* ---------- Calibration (centrage de l'image sous chaque lentille) ---------- */
 calibToggle.addEventListener('click', () => calibPanel.classList.toggle('show'));
-document.getElementById('calibLeft').addEventListener('click', () => setEyeSep(eyeSep - 0.004));
-document.getElementById('calibRight').addEventListener('click', () => setEyeSep(eyeSep + 0.004));
-document.getElementById('calibReset').addEventListener('click', () => setEyeSep(0.064));
+document.getElementById('calibLeft').addEventListener('click', () => setEyeShift(eyeShiftPx - 2));
+document.getElementById('calibRight').addEventListener('click', () => setEyeShift(eyeShiftPx + 2));
+document.getElementById('calibReset').addEventListener('click', () => setEyeShift(0));
 
 let flipHandX = localStorage.getItem('vrFlipHandX') === '1';
 let flipHandY = localStorage.getItem('vrFlipHandY') === '1';
@@ -233,10 +222,9 @@ document.getElementById('flipHandYBtn').addEventListener('click', () => {
   flipHandY = !flipHandY;
   localStorage.setItem('vrFlipHandY', flipHandY ? '1' : '0');
 });
-function setEyeSep(v) {
-  eyeSep = Math.max(0.03, Math.min(0.09, v));
-  localStorage.setItem('vrEyeSep', String(eyeSep));
-  applyEyeSeparation();
+function setEyeShift(v) {
+  eyeShiftPx = v;
+  localStorage.setItem('vrEyeShiftPx', String(eyeShiftPx));
 }
 
 /* ---------- Orientation de l'appareil -> rotation du rig ---------- */
@@ -414,8 +402,7 @@ function makeHandRig() {
   const gloveMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.02 });
   const cuffMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
 
-  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.062, 20, 20), gloveMat);
-  palm.scale.set(1.15, 0.75, 1.3);
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 20), gloveMat);
   group.add(palm);
 
   const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 14), cuffMat);
@@ -467,6 +454,24 @@ function landmarkToWorld(landmark, eyeW, eyeH) {
 
 const _boneA = new THREE.Vector3(), _boneB = new THREE.Vector3(), _boneMid = new THREE.Vector3(), _boneDir = new THREE.Vector3();
 const _palmCenter = new THREE.Vector3();
+const _lenAxis = new THREE.Vector3(), _widthAxis = new THREE.Vector3(), _normalAxis = new THREE.Vector3();
+const _palmMat = new THREE.Matrix4();
+function updatePalm(rigMesh, worldPts) {
+  const wrist = worldPts[0], indexMCP = worldPts[5], pinkyMCP = worldPts[17], midMCP = worldPts[9];
+
+  _lenAxis.subVectors(midMCP, wrist).normalize();
+  _widthAxis.subVectors(indexMCP, pinkyMCP).normalize();
+  _normalAxis.crossVectors(_lenAxis, _widthAxis).normalize();
+  _widthAxis.crossVectors(_normalAxis, _lenAxis).normalize();
+
+  _palmMat.makeBasis(_widthAxis, _normalAxis, _lenAxis);
+  rigMesh.palm.quaternion.setFromRotationMatrix(_palmMat);
+
+  const palmLen = wrist.distanceTo(midMCP);
+  const palmWidth = indexMCP.distanceTo(pinkyMCP);
+  rigMesh.palm.scale.set(palmWidth * 0.56, palmLen * 0.24, palmLen * 0.6);
+  rigMesh.palm.position.copy(wrist).lerp(midMCP, 0.52);
+}
 function orientSegment(mesh, a, b) {
   _boneMid.addVectors(a, b).multiplyScalar(0.5);
   _boneDir.subVectors(b, a);
@@ -483,11 +488,11 @@ function updateHandMeshes(handsLandmarks, eyeW, eyeH) {
     rigMesh.group.visible = true;
     const worldPts = landmarks.map(l => landmarkToWorld(l, eyeW, eyeH));
 
-    // Paume : centre des articulations de base des doigts
+    // Paume : orientée et étirée selon les axes réels de la main
+    updatePalm(rigMesh, worldPts);
     _palmCenter.set(0, 0, 0);
     PALM_JOINTS.forEach(idx => _palmCenter.add(worldPts[idx]));
     _palmCenter.multiplyScalar(1 / PALM_JOINTS.length);
-    rigMesh.palm.position.copy(_palmCenter);
 
     // Manchette sombre entre le poignet et la paume
     _boneA.copy(worldPts[0]);
@@ -586,12 +591,32 @@ function renderLoop() {
 
   renderer.setScissorTest(true);
   const fullW = renderer.domElement.width, fullH = renderer.domElement.height;
-  renderer.setViewport(0, 0, fullW / 2, fullH);
-  renderer.setScissor(0, 0, fullW / 2, fullH);
-  renderer.render(scene, cameraLeft);
-  renderer.setViewport(fullW / 2, 0, fullW / 2, fullH);
-  renderer.setScissor(fullW / 2, 0, fullW / 2, fullH);
-  renderer.render(scene, cameraRight);
+  const eyeBufW = fullW / 2, eyeBufH = fullH;
+
+  // Frustum légèrement élargi horizontalement pour offrir une marge de recadrage,
+  // sans jamais toucher au champ de vision vertical (VFOV_DEG reste inchangé).
+  const wideBufW = eyeBufW * (1 + MARGIN_FRAC);
+  cameraMain.fov = VFOV_DEG;
+  cameraMain.aspect = wideBufW / eyeBufH;
+  cameraMain.updateProjectionMatrix();
+
+  const marginBufPx = eyeBufW * MARGIN_FRAC;
+  const maxShiftBuf = marginBufPx / 2;
+  const shiftBuf = Math.max(-maxShiftBuf, Math.min(maxShiftBuf, eyeShiftPx * (window.devicePixelRatio || 1)));
+
+  // Œil gauche : même caméra, recadrage décalé d'un côté du cadre élargi
+  cameraMain.setViewOffset(wideBufW, eyeBufH, marginBufPx / 2 - shiftBuf, 0, eyeBufW, eyeBufH);
+  renderer.setViewport(0, 0, eyeBufW, eyeBufH);
+  renderer.setScissor(0, 0, eyeBufW, eyeBufH);
+  renderer.render(scene, cameraMain);
+
+  // Œil droit : même caméra, recadrage décalé de l'autre côté (image quasi identique)
+  cameraMain.setViewOffset(wideBufW, eyeBufH, marginBufPx / 2 + shiftBuf, 0, eyeBufW, eyeBufH);
+  renderer.setViewport(eyeBufW, 0, eyeBufW, eyeBufH);
+  renderer.setScissor(eyeBufW, 0, eyeBufW, eyeBufH);
+  renderer.render(scene, cameraMain);
+
+  cameraMain.clearViewOffset();
 
   requestAnimationFrame(renderLoop);
 }
