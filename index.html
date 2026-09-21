@@ -17,7 +17,13 @@
     padding-left:env(safe-area-inset-left,0px);
     padding-right:env(safe-area-inset-right,0px);
   }
-  #divider { position:fixed; top:0; bottom:0; left:50%; width:1px; background:rgba(255,255,255,0.12); z-index:5; pointer-events:none; }
+  #divider { position:fixed; top:0; bottom:0; left:50%; width:2px; background:rgba(255,255,255,0.2); z-index:5; pointer-events:none; }
+  .eyeMask {
+    position:fixed; top:0; bottom:0; width:50%; z-index:6; pointer-events:none;
+    background:radial-gradient(circle at center, rgba(0,0,0,0) 62%, rgba(0,0,0,1) 78%);
+  }
+  #eyeMaskLeft { left:0; }
+  #eyeMaskRight { right:0; }
 
   #overlay {
     position:fixed; inset:0; z-index:20;
@@ -85,6 +91,8 @@
 <video id="video" playsinline muted></video>
 <canvas id="gl"></canvas>
 <div id="divider"></div>
+<div id="eyeMaskLeft" class="eyeMask"></div>
+<div id="eyeMaskRight" class="eyeMask"></div>
 <div id="hud">Orbes : <span id="score">0</span> / <span id="total">8</span></div>
 
 <button id="calibToggle">⚙️</button>
@@ -94,6 +102,11 @@
     <button id="calibLeft">◀</button>
     <button id="calibReset">⟳</button>
     <button id="calibRight">▶</button>
+  </div>
+  <span>Orientation des mains</span>
+  <div class="row">
+    <button id="flipHandXBtn">↔️</button>
+    <button id="flipHandYBtn">↕️</button>
   </div>
 </div>
 
@@ -206,6 +219,17 @@ calibToggle.addEventListener('click', () => calibPanel.classList.toggle('show'))
 document.getElementById('calibLeft').addEventListener('click', () => setEyeSep(eyeSep - 0.004));
 document.getElementById('calibRight').addEventListener('click', () => setEyeSep(eyeSep + 0.004));
 document.getElementById('calibReset').addEventListener('click', () => setEyeSep(0.064));
+
+let flipHandX = localStorage.getItem('vrFlipHandX') === '1';
+let flipHandY = localStorage.getItem('vrFlipHandY') === '1';
+document.getElementById('flipHandXBtn').addEventListener('click', () => {
+  flipHandX = !flipHandX;
+  localStorage.setItem('vrFlipHandX', flipHandX ? '1' : '0');
+});
+document.getElementById('flipHandYBtn').addEventListener('click', () => {
+  flipHandY = !flipHandY;
+  localStorage.setItem('vrFlipHandY', flipHandY ? '1' : '0');
+});
 function setEyeSep(v) {
   eyeSep = Math.max(0.03, Math.min(0.09, v));
   localStorage.setItem('vrEyeSep', String(eyeSep));
@@ -360,44 +384,44 @@ function worldToEyePixels(worldPos, eyeW, eyeH) {
   return { x: (ndcX * 0.5 + 0.5) * eyeW, y: (0.5 - ndcY * 0.5) * eyeH };
 }
 
-/* ---------- Mains 3D (reconstruites à partir du suivi) ---------- */
-const HAND_CONNECTIONS = [
-  [0,1],[1,2],[2,3],[3,4],
-  [0,5],[5,6],[6,7],[7,8],
-  [5,9],[9,10],[10,11],[11,12],
-  [9,13],[13,14],[14,15],[15,16],
-  [13,17],[17,18],[18,19],[19,20],
-  [0,17]
-];
+/* ---------- Mains 3D façon gant blanc "goofy" ---------- */
 const CATCH_LANDMARKS = [0, 4, 8, 12, 16, 20];
-const HAND_COLORS = [0x5bffb0, 0x5b8cff];
+const PALM_JOINTS = [0, 5, 9, 13, 17];
+// [articulation de base, bout du doigt] pour chaque doigt : pouce, index, majeur, annulaire, auriculaire
+const FINGER_PAIRS = [[2, 4], [5, 8], [9, 12], [13, 16], [17, 20]];
 
-function makeHandRig(color) {
+function makeHandRig() {
   const group = new THREE.Group();
-  const jointMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4 });
-  const boneMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5 });
-  const joints = [];
-  for (let i = 0; i < 21; i++) {
-    const j = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 8), jointMat);
-    group.add(j); joints.push(j);
-  }
-  const bones = [];
-  HAND_CONNECTIONS.forEach(() => {
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 1, 6), boneMat);
-    group.add(b); bones.push(b);
+  const gloveMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.02 });
+  const cuffMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.058, 18, 18), gloveMat);
+  group.add(palm);
+
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 14), cuffMat);
+  group.add(cuff);
+
+  const fingers = FINGER_PAIRS.map(() => {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 10), gloveMat);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 12), gloveMat);
+    group.add(body, tip);
+    return { body, tip };
   });
+
   group.visible = false;
   scene.add(group);
-  return { group, joints, bones };
+  return { group, palm, cuff, fingers };
 }
-const handRigs = [makeHandRig(HAND_COLORS[0]), makeHandRig(HAND_COLORS[1])];
+const handRigs = [makeHandRig(), makeHandRig()];
 
 const HAND_BASE_DIST = 0.55;
 const HAND_Z_SCALE = 1.4;
 function landmarkToWorld(landmark, eyeW, eyeH) {
-  const ndcX = (landmark.x - 0.5) * 2;
-  const ndcY = (0.5 - landmark.y) * 2;
-  const dist = Math.max(0.25, Math.min(1.2, HAND_BASE_DIST - landmark.z * HAND_Z_SCALE));
+  let ndcX = (landmark.x - 0.5) * 2;
+  let ndcY = (0.5 - landmark.y) * 2;
+  if (flipHandX) ndcX = -ndcX;
+  if (flipHandY) ndcY = -ndcY;
+  const dist = Math.max(0.25, Math.min(1.2, HAND_BASE_DIST + landmark.z * HAND_Z_SCALE));
   const vFov = THREE.MathUtils.degToRad(VFOV_DEG);
   const aspect = eyeW / eyeH;
   const halfH = dist * Math.tan(vFov / 2);
@@ -415,22 +439,39 @@ function landmarkToWorld(landmark, eyeW, eyeH) {
 }
 
 const _boneA = new THREE.Vector3(), _boneB = new THREE.Vector3(), _boneMid = new THREE.Vector3(), _boneDir = new THREE.Vector3();
+const _palmCenter = new THREE.Vector3();
+function orientSegment(mesh, a, b) {
+  _boneMid.addVectors(a, b).multiplyScalar(0.5);
+  _boneDir.subVectors(b, a);
+  const len = _boneDir.length();
+  mesh.position.copy(_boneMid);
+  mesh.scale.set(1, Math.max(len, 0.001), 1);
+  if (len > 0.0001) mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _boneDir.clone().normalize());
+}
+
 function updateHandMeshes(handsLandmarks, eyeW, eyeH) {
   handRigs.forEach((rigMesh, i) => {
     const landmarks = handsLandmarks[i];
     if (!landmarks) { rigMesh.group.visible = false; return; }
     rigMesh.group.visible = true;
     const worldPts = landmarks.map(l => landmarkToWorld(l, eyeW, eyeH));
-    worldPts.forEach((p, idx) => rigMesh.joints[idx].position.copy(p));
-    HAND_CONNECTIONS.forEach(([a, b], idx) => {
-      _boneA.copy(worldPts[a]); _boneB.copy(worldPts[b]);
-      _boneMid.addVectors(_boneA, _boneB).multiplyScalar(0.5);
-      _boneDir.subVectors(_boneB, _boneA);
-      const len = _boneDir.length();
-      const bone = rigMesh.bones[idx];
-      bone.position.copy(_boneMid);
-      bone.scale.set(1, Math.max(len, 0.001), 1);
-      if (len > 0.0001) bone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _boneDir.clone().normalize());
+
+    // Paume : centre des articulations de base des doigts
+    _palmCenter.set(0, 0, 0);
+    PALM_JOINTS.forEach(idx => _palmCenter.add(worldPts[idx]));
+    _palmCenter.multiplyScalar(1 / PALM_JOINTS.length);
+    rigMesh.palm.position.copy(_palmCenter);
+
+    // Manchette sombre entre le poignet et la paume
+    _boneA.copy(worldPts[0]);
+    _boneB.copy(worldPts[0]).lerp(_palmCenter, 0.5);
+    orientSegment(rigMesh.cuff, _boneA, _boneB);
+
+    // Doigts épais, arrondis au bout (style gant)
+    FINGER_PAIRS.forEach(([baseIdx, tipIdx], f) => {
+      const a = worldPts[baseIdx], b = worldPts[tipIdx];
+      orientSegment(rigMesh.fingers[f].body, a, b);
+      rigMesh.fingers[f].tip.position.copy(b);
     });
   });
 }
