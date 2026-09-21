@@ -20,7 +20,7 @@
   #divider { position:fixed; top:0; bottom:0; left:50%; width:2px; background:rgba(255,255,255,0.2); z-index:5; pointer-events:none; }
   .eyeMask {
     position:fixed; top:0; bottom:0; width:50%; z-index:6; pointer-events:none;
-    background:radial-gradient(circle at center, rgba(0,0,0,0) 62%, rgba(0,0,0,1) 78%);
+    background:radial-gradient(ellipse closest-side at center, rgba(0,0,0,0) 86%, rgba(0,0,0,1) 100%);
   }
   #eyeMaskLeft { left:0; }
   #eyeMaskRight { right:0; }
@@ -193,6 +193,9 @@ rig.add(cameraLeft, cameraRight);
 function applyEyeSeparation() {
   cameraLeft.position.set(-eyeSep / 2, 0, 0);
   cameraRight.position.set(eyeSep / 2, 0, 0);
+  const toeInRad = THREE.MathUtils.degToRad(1.4);
+  cameraLeft.rotation.set(0, toeInRad, 0);
+  cameraRight.rotation.set(0, -toeInRad, 0);
 }
 applyEyeSeparation();
 
@@ -384,33 +387,57 @@ function worldToEyePixels(worldPos, eyeW, eyeH) {
   return { x: (ndcX * 0.5 + 0.5) * eyeW, y: (0.5 - ndcY * 0.5) * eyeH };
 }
 
-/* ---------- Mains 3D façon gant blanc "goofy" ---------- */
+/* ---------- Mains 3D : gant blanc entièrement articulé ---------- */
 const CATCH_LANDMARKS = [0, 4, 8, 12, 16, 20];
 const PALM_JOINTS = [0, 5, 9, 13, 17];
-// [articulation de base, bout du doigt] pour chaque doigt : pouce, index, majeur, annulaire, auriculaire
-const FINGER_PAIRS = [[2, 4], [5, 8], [9, 12], [13, 16], [17, 20]];
+
+// Toutes les articulations de doigts (hors poignet), avec rayon dégressif base -> pointe
+const JOINT_RADIUS = {
+  1: 0.028, 2: 0.023, 3: 0.019, 4: 0.015,
+  5: 0.027, 6: 0.022, 7: 0.018, 8: 0.014,
+  9: 0.028, 10: 0.023, 11: 0.019, 12: 0.015,
+  13: 0.026, 14: 0.021, 15: 0.017, 16: 0.013,
+  17: 0.023, 18: 0.019, 19: 0.015, 20: 0.012
+};
+const FINGER_JOINTS = Object.keys(JOINT_RADIUS).map(Number);
+// Segments entre articulations consécutives d'un même doigt (effilés : rayon base > rayon pointe)
+const FINGER_SEGMENTS = [
+  [1, 2], [2, 3], [3, 4],
+  [5, 6], [6, 7], [7, 8],
+  [9, 10], [10, 11], [11, 12],
+  [13, 14], [14, 15], [15, 16],
+  [17, 18], [18, 19], [19, 20]
+];
 
 function makeHandRig() {
   const group = new THREE.Group();
-  const gloveMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.02 });
+  const gloveMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.02 });
   const cuffMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
 
-  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.058, 18, 18), gloveMat);
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.062, 20, 20), gloveMat);
+  palm.scale.set(1.15, 0.75, 1.3);
   group.add(palm);
 
   const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 14), cuffMat);
   group.add(cuff);
 
-  const fingers = FINGER_PAIRS.map(() => {
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 10), gloveMat);
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 12), gloveMat);
-    group.add(body, tip);
-    return { body, tip };
+  const joints = {};
+  FINGER_JOINTS.forEach(idx => {
+    const j = new THREE.Mesh(new THREE.SphereGeometry(JOINT_RADIUS[idx], 12, 12), gloveMat);
+    group.add(j);
+    joints[idx] = j;
+  });
+
+  const segments = FINGER_SEGMENTS.map(([a, b]) => {
+    // Cylindre effilé : rayon du côté "base" (a) plus large que côté "pointe" (b)
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(JOINT_RADIUS[b], JOINT_RADIUS[a], 1, 10), gloveMat);
+    group.add(seg);
+    return seg;
   });
 
   group.visible = false;
   scene.add(group);
-  return { group, palm, cuff, fingers };
+  return { group, palm, cuff, joints, segments };
 }
 const handRigs = [makeHandRig(), makeHandRig()];
 
@@ -467,11 +494,12 @@ function updateHandMeshes(handsLandmarks, eyeW, eyeH) {
     _boneB.copy(worldPts[0]).lerp(_palmCenter, 0.5);
     orientSegment(rigMesh.cuff, _boneA, _boneB);
 
-    // Doigts épais, arrondis au bout (style gant)
-    FINGER_PAIRS.forEach(([baseIdx, tipIdx], f) => {
-      const a = worldPts[baseIdx], b = worldPts[tipIdx];
-      orientSegment(rigMesh.fingers[f].body, a, b);
-      rigMesh.fingers[f].tip.position.copy(b);
+    // Chaque articulation de doigt, visible individuellement
+    FINGER_JOINTS.forEach(idx => rigMesh.joints[idx].position.copy(worldPts[idx]));
+
+    // Segments effilés entre articulations consécutives
+    FINGER_SEGMENTS.forEach(([a, b], segIdx) => {
+      orientSegment(rigMesh.segments[segIdx], worldPts[a], worldPts[b]);
     });
   });
 }
