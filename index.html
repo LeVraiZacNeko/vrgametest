@@ -590,8 +590,7 @@ function renderLoop() {
   });
 
   renderer.setScissorTest(true);
-  const fullW = renderer.domElement.width, fullH = renderer.domElement.height;
-  const eyeBufW = fullW / 2, eyeBufH = fullH;
+  const eyeBufW = eyeW, eyeBufH = eyeH; // pixels CSS : setViewport/setScissor appliquent déjà le pixelRatio en interne
 
   // Frustum légèrement élargi horizontalement pour offrir une marge de recadrage,
   // sans jamais toucher au champ de vision vertical (VFOV_DEG reste inchangé).
@@ -602,7 +601,7 @@ function renderLoop() {
 
   const marginBufPx = eyeBufW * MARGIN_FRAC;
   const maxShiftBuf = marginBufPx / 2;
-  const shiftBuf = Math.max(-maxShiftBuf, Math.min(maxShiftBuf, eyeShiftPx * (window.devicePixelRatio || 1)));
+  const shiftBuf = Math.max(-maxShiftBuf, Math.min(maxShiftBuf, eyeShiftPx));
 
   // Œil gauche : même caméra, recadrage décalé d'un côté du cadre élargi
   cameraMain.setViewOffset(wideBufW, eyeBufH, marginBufPx / 2 - shiftBuf, 0, eyeBufW, eyeBufH);
