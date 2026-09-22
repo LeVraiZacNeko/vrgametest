@@ -284,10 +284,23 @@
     refreshEnterButton();
   });
 
-  // Si la bibliothèque A-Frame ne s'est pas chargée après quelques secondes
+  // Si la scène a déjà fini de charger avant même que ce script ne s'exécute
+  // (l'événement "loaded" a pu se déclencher avant qu'on ait pu l'écouter),
+  // on le détecte directement plutôt que de rater l'info.
+  if (sceneEl.hasLoaded){
+    sceneReady = true;
+    refreshEnterButton();
+  }
+
+  // Si la bibliothèque A-Frame ne s'est vraiment pas chargée après quelques secondes
   // (CDN bloqué, pas de connexion, etc.), on prévient plutôt que de planter.
   setTimeout(() => {
     if (!sceneReady){
+      if (typeof window.AFRAME !== "undefined" && sceneEl.hasLoaded){
+        sceneReady = true;
+        refreshEnterButton();
+        return;
+      }
       statusEl.textContent = "La bibliothèque VR (A-Frame) n'a pas pu se charger. Vérifie ta connexion ou qu'aucun bloqueur de script n'empêche cdn.jsdelivr.net.";
     }
   }, 8000);
