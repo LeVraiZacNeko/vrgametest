@@ -283,7 +283,10 @@
   // ---------- Vérification que A-Frame / la scène sont bien chargés ----------
   let sceneReady = false;
   let mediaReady = false;
+  let vrStarted = false;
+  let videoTexturePending = false;
 
+  
   function refreshEnterButton(){
     enterBtn.disabled = !(sceneReady && mediaReady);
   }
@@ -335,58 +338,37 @@
 function loadMedia(url, type){
   type = type || guessType(url);
 
-  if (type === "video"){
-    imgEl.removeAttribute("src");
+ if (type === "video"){
+  imgEl.removeAttribute("src");
 
-    // Ne pas lancer automatiquement la vidéo sur Safari/iOS.
-    videoEl.pause();
-    videoEl.removeAttribute("src");
-    videoEl.load();
+  videoEl.pause();
+  videoEl.removeAttribute("src");
+  videoEl.load();
 
-    videoEl.muted = true;
-    videoEl.playsInline = true;
-    videoEl.setAttribute("playsinline", "");
-    videoEl.setAttribute("webkit-playsinline", "");
-    videoEl.src = url;
+  videoEl.muted = true;
+  videoEl.playsInline = true;
+  videoEl.setAttribute("playsinline", "");
+  videoEl.setAttribute("webkit-playsinline", "");
+  videoEl.src = url;
 
-    const onReady = () => {
-      updateAspect(videoEl.videoWidth || 16, videoEl.videoHeight || 9);
-      statusEl.textContent =
-        "Vidéo prête. Appuie sur Lecture pour démarrer.";
-    };
+  const onReady = () => {
+    updateAspect(videoEl.videoWidth || 16, videoEl.videoHeight || 9);
+    statusEl.textContent =
+      "Vidéo prête. Appuie sur Lecture pour démarrer.";
+  };
 
-    videoEl.addEventListener("loadedmetadata", onReady, { once: true });
+  videoEl.addEventListener("loadedmetadata", onReady, { once: true });
 
-    videoEl.addEventListener("error", () => {
-      console.error("Erreur vidéo :", videoEl.error);
-      statusEl.textContent =
-        "Safari n'a pas pu charger ou décoder cette vidéo.";
-    }, { once: true });
+  videoEl.addEventListener("error", () => {
+    console.error("Erreur vidéo :", videoEl.error);
+    statusEl.textContent =
+      "Safari n'a pas pu charger ou décoder cette vidéo.";
+  }, { once: true });
 
-    screenEl.setAttribute("material", "src", "#mediaVideo");
+  videoTexturePending = true;
 
-  } else {
-    videoEl.pause();
-    videoEl.removeAttribute("src");
-    videoEl.load();
-
-    imgEl.addEventListener("load", () => {
-      updateAspect(
-        imgEl.naturalWidth || 16,
-        imgEl.naturalHeight || 9
-      );
-    }, { once: true });
-
-    imgEl.src = url;
-    screenEl.setAttribute("material", "src", "#mediaImg");
-  }
-
-  currentType = type;
-  mediaReady = true;
-  refreshEnterButton();
-
-  statusEl.textContent =
-    "Média prêt : " + url.split("/").pop() + " (" + type + ")";
+  // Important : pas encore de texture vidéo WebGL.
+  screenEl.setAttribute("material", "src", "#mediaImg");
 }
 
   function updateAspect(w, h){
@@ -460,11 +442,34 @@ fileInput.addEventListener("change", (e) => {
   });
 
   sceneEl.addEventListener("enter-vr", () => {
-    landingEl.style.display = "none";
-  });
+  landingEl.style.display = "none";
+  vrStarted = true;
+
+  // Laisse Safari terminer la transition VR avant de connecter
+  // la vidéo comme texture WebGL.
+  setTimeout(() => {
+    if (currentType === "video" && videoTexturePending) {
+      screenEl.setAttribute("material", "src", "#mediaVideo");
+      videoTexturePending = false;
+
+      // Relance la vidéo après l'entrée en VR.
+      if (videoEl.paused) {
+        videoEl.play().catch((err) => {
+          console.error("Lecture après entrée VR refusée :", err);
+        });
+      }
+    }
+  }, 300);
+});
   sceneEl.addEventListener("exit-vr", () => {
-    landingEl.style.display = "flex";
-  });
+  vrStarted = false;
+  landingEl.style.display = "flex";
+
+  if (currentType === "video") {
+    videoTexturePending = true;
+    screenEl.setAttribute("material", "src", "#mediaImg");
+  }
+});
 
   // ---------- Curseur "fuse" : anneau de progression pendant le regard prolongé ----------
   const cursorEl  = document.getElementById("cursor");
