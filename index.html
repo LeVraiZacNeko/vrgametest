@@ -164,8 +164,8 @@
 <a-scene vr-mode-ui="enabled: true" embedded>
 
   <a-assets>
-    <video id="mediaVideo" crossorigin="anonymous" playsinline webkit-playsinline loop></video>
-    <img id="mediaImg" crossorigin="anonymous">
+    <video id="mediaVideo" playsinline webkit-playsinline muted loop preload="metadata"></video>
+    <img id="mediaImg">
   </a-assets>
 
   <!-- Environnement 360° -->
@@ -395,13 +395,25 @@ function loadMedia(url, type){
     screenEl.setAttribute("geometry", "height", BASE_WIDTH * ratio);
   }
 
-  fileInput.addEventListener("change", (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const type = file.type.startsWith("video") ? "video" : "image";
-    loadMedia(url, type);
-  });
+let currentObjectURL = null;
+
+fileInput.addEventListener("change", (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  if (currentObjectURL) {
+    URL.revokeObjectURL(currentObjectURL);
+    currentObjectURL = null;
+  }
+
+  currentObjectURL = URL.createObjectURL(file);
+
+  const type = file.type.startsWith("video")
+    ? "video"
+    : "image";
+
+  loadMedia(currentObjectURL, type);
+});
 
   loadUrlBtn.addEventListener("click", () => {
     const url = urlInput.value.trim();
@@ -523,11 +535,28 @@ function loadMedia(url, type){
     loadMedia(item.url, item.type);
   }
 
-  function togglePlayPause(){
-    if (currentType !== "video") return;
-    if (videoEl.paused) videoEl.play().catch(() => {});
-    else videoEl.pause();
+ function togglePlayPause(){
+  if (currentType !== "video") return;
+
+  if (videoEl.paused){
+    // play() est maintenant déclenché par l'action de l'utilisateur.
+    videoEl.muted = false;
+
+    videoEl.play()
+      .then(() => {
+        statusEl.textContent = "Lecture vidéo en cours.";
+      })
+      .catch((err) => {
+        console.error("Lecture refusée par Safari :", err);
+        statusEl.textContent =
+          "Safari a refusé la lecture. Appuie à nouveau sur Lecture.";
+      });
+
+  } else {
+    videoEl.pause();
+    statusEl.textContent = "Vidéo en pause.";
   }
+}
 
   document.querySelectorAll(".fusable").forEach((el) => {
     el.addEventListener("click", () => {
