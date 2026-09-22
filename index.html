@@ -49,7 +49,7 @@
   }
   #rotateHint.show { display:flex; }
 
-  #hud {
+  #hud { display:none;
     position:fixed; top:calc(14px + env(safe-area-inset-top,0px)); left:0; right:0;
     z-index:10; text-align:center; color:#fff; font-size:1.05rem; font-weight:600;
     text-shadow:0 2px 6px rgba(0,0,0,0.8); pointer-events:none;
@@ -191,6 +191,8 @@ rig.add(cameraMain);
 
 /* ---------- Redimensionnement (correction viewport iOS) ---------- */
 function getViewportSize() {
+  const rect = glCanvas.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) return { w: rect.width, h: rect.height };
   if (window.visualViewport) return { w: window.visualViewport.width, h: window.visualViewport.height };
   return { w: window.innerWidth, h: window.innerHeight };
 }
@@ -339,9 +341,11 @@ function randomOrbPosition() {
 
 const orbGroup = new THREE.Group();
 rig.parent.add(orbGroup);
+const ORBS_ENABLED = false; // désactivé temporairement pour se concentrer sur le réglage de la vision stéréo
 function spawnOrbs() {
   orbGroup.clear();
   orbs = [];
+  if (!ORBS_ENABLED) { collected = 0; scoreEl.textContent = 0; return; }
   for (let i = 0; i < TOTAL_ORBS; i++) {
     const color = colors[i % colors.length];
     const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.3 });
