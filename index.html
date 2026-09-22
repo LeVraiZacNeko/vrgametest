@@ -16,7 +16,7 @@
     au début), ou ajoute <base href="/mon-repo/"> juste ici dans le <head>.
 -->
 
-<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
 
 <style>
   :root{
@@ -278,6 +278,27 @@
   const BASE_WIDTH = 3;
   const BASE_DISTANCE = 3;
 
+  // ---------- Vérification que A-Frame / la scène sont bien chargés ----------
+  let sceneReady = false;
+  let mediaReady = false;
+
+  function refreshEnterButton(){
+    enterBtn.disabled = !(sceneReady && mediaReady);
+  }
+
+  sceneEl.addEventListener("loaded", () => {
+    sceneReady = true;
+    refreshEnterButton();
+  });
+
+  // Si la bibliothèque A-Frame ne s'est pas chargée après quelques secondes
+  // (CDN bloqué, pas de connexion, etc.), on prévient plutôt que de planter.
+  setTimeout(() => {
+    if (!sceneReady){
+      statusEl.textContent = "La bibliothèque VR (A-Frame) n'a pas pu se charger. Vérifie ta connexion ou qu'aucun bloqueur de script n'empêche cdn.jsdelivr.net.";
+    }
+  }, 8000);
+
   // ---------- Construction des boutons de la bibliothèque (page d'accueil) ----------
   mediaLibrary.forEach((item, i) => {
     const b = document.createElement("button");
@@ -320,7 +341,8 @@
       screenEl.setAttribute("material", "src", "#mediaImg");
     }
     currentType = type;
-    enterBtn.disabled = false;
+    mediaReady = true;
+    refreshEnterButton();
     statusEl.textContent = "Média prêt : " + url.split("/").pop() + " (" + type + ")";
   }
 
@@ -345,7 +367,20 @@
 
   // ---------- Entrée / sortie VR ----------
   enterBtn.addEventListener("click", () => {
-    sceneEl.enterVR();
+    if (typeof sceneEl.enterVR !== "function"){
+      statusEl.textContent = "La scène VR n'est pas encore prête (A-Frame non chargé). Réessaie dans un instant ou recharge la page.";
+      return;
+    }
+    try {
+      const result = sceneEl.enterVR();
+      if (result && typeof result.catch === "function"){
+        result.catch((err) => {
+          statusEl.textContent = "Impossible d'entrer en VR : " + (err && err.message ? err.message : "vérifie que la page est servie en HTTPS.");
+        });
+      }
+    } catch (err) {
+      statusEl.textContent = "Impossible d'entrer en VR : " + (err && err.message ? err.message : String(err));
+    }
   });
 
   sceneEl.addEventListener("enter-vr", () => {
