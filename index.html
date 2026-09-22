@@ -332,34 +332,62 @@
     return "image";
   }
 
-  function loadMedia(url, type){
-    type = type || guessType(url);
-    if (type === "video"){
-      imgEl.removeAttribute("src");
-      videoEl.muted = false;
-      videoEl.src = url;
-      videoEl.load();
-      const onReady = () => {
-        updateAspect(videoEl.videoWidth || 16, videoEl.videoHeight || 9);
-        videoEl.play().catch(() => { /* nécessitera un geste utilisateur sur certains navigateurs */ });
-      };
-      videoEl.addEventListener("loadedmetadata", onReady, { once: true });
-      screenEl.setAttribute("material", "src", "#mediaVideo");
-    } else {
-      videoEl.pause();
-      videoEl.removeAttribute("src");
-      videoEl.load();
-      imgEl.addEventListener("load", () => {
-        updateAspect(imgEl.naturalWidth || 16, imgEl.naturalHeight || 9);
-      }, { once: true });
-      imgEl.src = url;
-      screenEl.setAttribute("material", "src", "#mediaImg");
-    }
-    currentType = type;
-    mediaReady = true;
-    refreshEnterButton();
-    statusEl.textContent = "Média prêt : " + url.split("/").pop() + " (" + type + ")";
+function loadMedia(url, type){
+  type = type || guessType(url);
+
+  if (type === "video"){
+    imgEl.removeAttribute("src");
+
+    // Ne pas lancer automatiquement la vidéo sur Safari/iOS.
+    videoEl.pause();
+    videoEl.removeAttribute("src");
+    videoEl.load();
+
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.setAttribute("playsinline", "");
+    videoEl.setAttribute("webkit-playsinline", "");
+    videoEl.src = url;
+
+    const onReady = () => {
+      updateAspect(videoEl.videoWidth || 16, videoEl.videoHeight || 9);
+      statusEl.textContent =
+        "Vidéo prête. Appuie sur Lecture pour démarrer.";
+    };
+
+    videoEl.addEventListener("loadedmetadata", onReady, { once: true });
+
+    videoEl.addEventListener("error", () => {
+      console.error("Erreur vidéo :", videoEl.error);
+      statusEl.textContent =
+        "Safari n'a pas pu charger ou décoder cette vidéo.";
+    }, { once: true });
+
+    screenEl.setAttribute("material", "src", "#mediaVideo");
+
+  } else {
+    videoEl.pause();
+    videoEl.removeAttribute("src");
+    videoEl.load();
+
+    imgEl.addEventListener("load", () => {
+      updateAspect(
+        imgEl.naturalWidth || 16,
+        imgEl.naturalHeight || 9
+      );
+    }, { once: true });
+
+    imgEl.src = url;
+    screenEl.setAttribute("material", "src", "#mediaImg");
   }
+
+  currentType = type;
+  mediaReady = true;
+  refreshEnterButton();
+
+  statusEl.textContent =
+    "Média prêt : " + url.split("/").pop() + " (" + type + ")";
+}
 
   function updateAspect(w, h){
     const ratio = h / w || 9/16;
