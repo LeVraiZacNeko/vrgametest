@@ -1,668 +1,469 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
-<title>Chasse aux Orbes VR</title>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Orbes VR">
+<title>Visionneuse VR Cardboard</title>
+
+<!--
+  NOTE GITHUB PAGES :
+  Ce fichier référence l'image d'environnement via un chemin ABSOLU : /assets/sky-panorama.jpg
+  - Si ton site est un site "utilisateur/organisation" (ex: tonpseudo.github.io), ce chemin
+    pointera bien vers la racine du domaine : ok.
+  - Si c'est un "project page" (ex: tonpseudo.github.io/mon-repo/), un chemin qui commence
+    par "/" pointera vers la racine du DOMAINE et non du repo, et l'image ne se chargera pas.
+    Dans ce cas, remplace "/assets/sky-panorama.jpg" par "assets/sky-panorama.jpg" (sans slash
+    au début), ou ajoute <base href="/mon-repo/"> juste ici dans le <head>.
+-->
+
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
 <style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; font-family:-apple-system, Arial, sans-serif; }
-  #video { display:none; }
-  canvas#gl {
-    position:fixed; inset:0; display:block;
+  :root{
+    --bg: #0a0d16;
+    --bg-soft: #10141f;
+    --panel: #131826;
+    --border: #232a3d;
+    --text: #e8ebf2;
+    --muted: #8992a8;
+    --accent: #6ea8ff;
+    --accent-soft: #223454;
   }
-  #divider { position:fixed; top:0; bottom:0; left:50%; width:2px; background:rgba(255,255,255,0.2); z-index:5; pointer-events:none; }
-  .eyeMask {
-    position:fixed; top:0; bottom:0; width:50%; z-index:6; pointer-events:none;
-    background:radial-gradient(ellipse closest-side at center, rgba(0,0,0,0) 86%, rgba(0,0,0,1) 100%);
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0; width:100%; height:100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+    touch-action: none;
   }
-  #eyeMaskLeft { left:0; }
-  #eyeMaskRight { right:0; }
+  a-scene{ position:absolute; inset:0; width:100%; height:100%; }
 
-  #overlay {
-    position:fixed; inset:0; z-index:20;
-    background:radial-gradient(circle at center, #16213e 0%, #05070f 100%);
-    color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    text-align:center; padding:24px; box-sizing:border-box;
-    padding-top:calc(24px + env(safe-area-inset-top,0px));
-    padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));
+  #landing{
+    position:absolute; inset:0; z-index:20;
+    display:flex; align-items:center; justify-content:center;
+    padding: 24px;
+    background: radial-gradient(1200px 800px at 50% 20%, rgba(110,168,255,0.10), transparent 60%), rgba(6,8,14,0.72);
+    backdrop-filter: blur(6px);
   }
-  #overlay h1 { font-size:1.4rem; margin:0 0 10px; }
-  #overlay p { font-size:0.88rem; line-height:1.5; max-width:340px; color:#c9d2e3; margin:0 0 14px; }
-  .bigBtn {
-    padding:15px 26px; font-size:1rem; border:none; border-radius:14px;
-    background:#5b8cff; color:#fff; font-weight:600; box-shadow:0 6px 18px rgba(91,140,255,0.4);
-    margin-bottom:10px; min-width:230px;
+  #card{
+    width:100%; max-width: 460px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 26px 24px;
   }
-  .bigBtn:active { transform:scale(0.97); }
-  #status { font-size:0.82rem; color:#8ea0c9; min-height:18px; }
-  #errorMsg { color:#ff8080; font-size:0.82rem; max-width:320px; }
-
-  #rotateHint {
-    position:fixed; inset:0; z-index:25; background:#05070f; color:#fff;
-    display:none; align-items:center; justify-content:center; flex-direction:column;
-    text-align:center; padding:24px;
+  #card h1{
+    margin: 0 0 6px;
+    font-size: 1.35rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
   }
-  #rotateHint.show { display:flex; }
-
-  #hud { display:none;
-    position:fixed; top:calc(14px + env(safe-area-inset-top,0px)); left:0; right:0;
-    z-index:10; text-align:center; color:#fff; font-size:1.05rem; font-weight:600;
-    text-shadow:0 2px 6px rgba(0,0,0,0.8); pointer-events:none;
+  #card p.sub{
+    margin: 0 0 22px;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
   }
-
-  #calibToggle {
-    position:fixed; z-index:15; bottom:calc(14px + env(safe-area-inset-bottom,0px));
-    right:calc(14px + env(safe-area-inset-right,0px));
-    width:38px; height:38px; border-radius:50%; border:none;
-    background:rgba(255,255,255,0.15); color:#fff; font-size:1rem;
+  .field{ margin-bottom: 16px; }
+  .field label{
+    display:block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px;
   }
-  #calibPanel {
-    position:fixed; z-index:15; bottom:calc(58px + env(safe-area-inset-bottom,0px));
-    right:calc(14px + env(safe-area-inset-right,0px));
-    background:rgba(10,14,24,0.9); border-radius:12px; padding:10px;
-    display:none; flex-direction:column; align-items:center; gap:6px;
+  .row{ display:flex; gap:8px; }
+  input[type="file"]{
+    width:100%; font-size: 0.85rem; color: var(--text);
   }
-  #calibPanel.show { display:flex; }
-  #calibPanel span { color:#c9d2e3; font-size:0.75rem; }
-  #calibPanel .row { display:flex; gap:6px; }
-  #calibPanel button {
-    width:36px; height:36px; border-radius:8px; border:none;
-    background:rgba(255,255,255,0.15); color:#fff; font-size:1.1rem;
+  input[type="text"]{
+    flex:1; min-width:0;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.9rem;
   }
-
-  #winOverlay {
-    position:fixed; inset:0; z-index:20; display:none;
-    background:rgba(5,7,15,0.92); color:#fff; flex-direction:column;
-    align-items:center; justify-content:center; text-align:center; padding:24px; box-sizing:border-box;
+  input[type="text"]:focus{ outline: 1px solid var(--accent); }
+  button{
+    font: inherit; cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 0.88rem;
   }
-  #winOverlay h1 { font-size:1.7rem; margin:0 0 8px; }
-  #winOverlay p { color:#c9d2e3; margin:0 0 20px; }
+  button:hover{ border-color: var(--accent); }
+  #enterBtn{
+    width:100%; margin-top: 8px;
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: #eaf1ff;
+    padding: 13px 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  #enterBtn:disabled{
+    opacity: 0.45; cursor: not-allowed; border-color: var(--border);
+  }
+  #status{
+    margin-top: 12px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    min-height: 1.2em;
+  }
+  hr.sep{
+    border: none; border-top: 1px solid var(--border);
+    margin: 18px 0;
+  }
+  #reopenLanding{
+    position:absolute; top:14px; left:14px; z-index:15;
+    display:none;
+  }
+  .hint{
+    font-size: 0.74rem; color: var(--muted); margin-top: 4px; line-height:1.4;
+  }
 </style>
 </head>
 <body>
 
-<video id="video" playsinline muted></video>
-<canvas id="gl"></canvas>
-<div id="divider"></div>
-<div id="eyeMaskLeft" class="eyeMask"></div>
-<div id="eyeMaskRight" class="eyeMask"></div>
-<div id="hud">Orbes : <span id="score">0</span> / <span id="total">8</span></div>
+<button id="reopenLanding">← Changer le média</button>
 
-<button id="calibToggle">⚙️</button>
-<div id="calibPanel">
-  <span>Centrage de l'image</span>
-  <div class="row">
-    <button id="calibLeft">◀</button>
-    <button id="calibReset">⟳</button>
-    <button id="calibRight">▶</button>
+<div id="landing">
+  <div id="card">
+    <h1>Visionneuse VR Cardboard</h1>
+    <p class="sub">Choisis une image ou une vidéo à afficher sur ton écran virtuel, dans un environnement à 360°. Une fois en VR, reste quelques secondes sur un bouton (regard) pour l'activer.</p>
+
+    <div class="field">
+      <label for="fileInput">Depuis cet appareil (image ou vidéo)</label>
+      <input type="file" id="fileInput" accept="video/*,image/*">
+    </div>
+
+    <div class="field">
+      <label for="urlInput">…ou depuis une URL / un chemin</label>
+      <div class="row">
+        <input type="text" id="urlInput" placeholder="assets/ma-video.mp4">
+        <button id="loadUrlBtn">Charger</button>
+      </div>
+      <div class="hint">L'extension du fichier détermine le type (mp4/webm/mov = vidéo, sinon image).</div>
+    </div>
+
+    <hr class="sep">
+
+    <div class="field">
+      <label>Bibliothèque intégrée</label>
+      <div class="row" id="libraryRow"></div>
+      <div class="hint">Ajoute tes propres entrées dans la variable <code>mediaLibrary</code> en haut du script.</div>
+    </div>
+
+    <button id="enterBtn" disabled>Entrer en VR</button>
+    <div id="status">Aucun média chargé pour l'instant.</div>
   </div>
-  <span>Orientation des mains</span>
-  <div class="row">
-    <button id="flipHandXBtn">↔️</button>
-    <button id="flipHandYBtn">↕️</button>
-  </div>
 </div>
 
-<div id="rotateHint">
-  <div style="font-size:2.5rem; margin-bottom:12px;">📱↻</div>
-  <p>Tourne ton téléphone en mode paysage pour utiliser le boîtier cardboard.</p>
-</div>
+<a-scene vr-mode-ui="enabled: true" embedded>
 
-<div id="overlay">
-  <h1>🖐️ Chasse aux Orbes VR</h1>
-  <p>
-    Regarde autour de toi (gyroscope) et attrape les orbes avec tes vraies mains,
-    représentées en 3D. Le décor et les modèles se règlent dans scene-config.js.
-  </p>
-  <button id="iosPermBtn" class="bigBtn" style="display:none;">Activer les capteurs de mouvement</button>
-  <button id="startBtn" class="bigBtn">Démarrer</button>
-  <p id="status"></p>
-  <p id="errorMsg"></p>
-</div>
+  <a-assets>
+    <video id="mediaVideo" crossorigin="anonymous" playsinline webkit-playsinline loop></video>
+    <img id="mediaImg" crossorigin="anonymous">
+  </a-assets>
 
-<div id="winOverlay">
-  <h1>🎉 Bravo !</h1>
-  <p>Tu as attrapé toutes les orbes.</p>
-  <button id="restartBtn" class="bigBtn">Rejouer</button>
-</div>
+  <!-- Environnement 360° -->
+  <a-sky id="skyEnv" src="/assets/sky-panorama.jpg" rotation="0 -90 0"></a-sky>
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
+  <!-- Écran (image ou vidéo) -->
+  <a-entity
+    id="mediaScreen"
+    geometry="primitive: plane; width: 3; height: 1.6875"
+    material="shader: flat; side: double; src: #mediaImg; transparent: true"
+    position="0 1.6 -3">
+  </a-entity>
+
+  <!-- Caméra + curseur "fuse" (regard prolongé = clic) -->
+  <a-entity id="cameraRig" position="0 1.6 0">
+    <a-camera id="cam" look-controls wasd-controls-enabled="false">
+
+      <a-entity id="cursor"
+        cursor="fuse: true; fuseTimeout: 1200"
+        raycaster="objects: .fusable; far: 20"
+        position="0 0 -1"
+        geometry="primitive: ring; radiusInner: 0.006; radiusOuter: 0.009"
+        material="color: #ffffff; shader: flat; opacity: 0.9">
+        <a-entity id="fuseRing"
+          geometry="primitive: ring; radiusInner: 0.012; radiusOuter: 0.017"
+          material="color: #6ea8ff; shader: flat; opacity: 0.85"
+          visible="false" scale="0.001 0.001 0.001">
+        </a-entity>
+      </a-entity>
+
+      <!-- HUD de contrôle, fixé à la caméra -->
+      <a-entity id="hud" position="0 -0.62 -1.2">
+
+        <!-- rangée 1 : taille / position -->
+        <a-entity class="fusable" data-action="scale-down" position="-1.1 0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: −; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="scale-up" position="-0.55 0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: +; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="move-left" position="0 0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: ◀; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="move-right" position="0.55 0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: ▶; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="recenter" position="1.1 0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#223454; opacity:0.92">
+          <a-entity text="value: ⟳ recentrer; align:center; width:2.6; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+
+        <!-- rangée 2 : média -->
+        <a-entity class="fusable" data-action="move-up" position="-1.1 -0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: ▲; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="move-down" position="-0.55 -0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: ▼; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="play-pause" position="0 -0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: ⏯; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="next-media" position="0.55 -0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#1a2030; opacity:0.88">
+          <a-entity text="value: ⏭; align:center; width:2; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+        <a-entity class="fusable" data-action="open-picker" position="1.1 -0.18 0"
+          geometry="primitive: plane; width: 0.46; height: 0.28" material="color:#223454; opacity:0.92">
+          <a-entity text="value: 📂 média; align:center; width:2.4; color:#eaf1ff" position="0 0 0.01"></a-entity>
+        </a-entity>
+
+      </a-entity>
+    </a-camera>
+  </a-entity>
+
+</a-scene>
+
 <script>
-  window.addEventListener('error', function (e) {
-    var box = document.createElement('div');
-    box.style.cssText = 'position:fixed;top:10px;left:10px;right:10px;z-index:999;background:#3a0d0d;color:#ffb3b3;padding:10px;border-radius:8px;font-size:12px;font-family:monospace;max-height:40vh;overflow:auto;';
-    box.textContent = 'Erreur JS : ' + (e.message || e.error) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
-    document.body.appendChild(box);
+(function(){
+  "use strict";
+
+  // ---- Bibliothèque de médias intégrée : ajoute tes propres entrées ici ----
+  const mediaLibrary = [
+    { name: "Panorama (démo)", url: "/assets/sky-panorama.jpg", type: "image" }
+    // { name: "Ma vidéo", url: "/assets/ma-video.mp4", type: "video" },
+  ];
+  let libraryIndex = 0;
+
+  const sceneEl      = document.querySelector("a-scene");
+  const landingEl    = document.getElementById("landing");
+  const reopenBtn     = document.getElementById("reopenLanding");
+  const fileInput    = document.getElementById("fileInput");
+  const urlInput     = document.getElementById("urlInput");
+  const loadUrlBtn   = document.getElementById("loadUrlBtn");
+  const enterBtn     = document.getElementById("enterBtn");
+  const statusEl     = document.getElementById("status");
+  const libraryRow   = document.getElementById("libraryRow");
+
+  const videoEl  = document.getElementById("mediaVideo");
+  const imgEl    = document.getElementById("mediaImg");
+  const screenEl = document.getElementById("mediaScreen");
+
+  let currentType = null; // 'video' | 'image'
+  const BASE_WIDTH = 3;
+  const BASE_DISTANCE = 3;
+
+  // ---------- Construction des boutons de la bibliothèque (page d'accueil) ----------
+  mediaLibrary.forEach((item, i) => {
+    const b = document.createElement("button");
+    b.textContent = item.name;
+    b.addEventListener("click", () => {
+      libraryIndex = i;
+      loadMedia(item.url, item.type);
+    });
+    libraryRow.appendChild(b);
   });
-</script>
-<script type="module">
-import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
-import { SCENE_CONFIG } from "./scene-config.js";
 
-/* ---------- DOM ---------- */
-const video = document.getElementById('video');
-const glCanvas = document.getElementById('gl');
-const overlay = document.getElementById('overlay');
-const winOverlay = document.getElementById('winOverlay');
-const statusEl = document.getElementById('status');
-const errorEl = document.getElementById('errorMsg');
-const startBtn = document.getElementById('startBtn');
-const iosPermBtn = document.getElementById('iosPermBtn');
-const rotateHint = document.getElementById('rotateHint');
-const calibToggle = document.getElementById('calibToggle');
-const calibPanel = document.getElementById('calibPanel');
-const scoreEl = document.getElementById('score');
-const totalEl = document.getElementById('total');
+  // ---------- Chargement d'un média ----------
+  function guessType(url){
+    const ext = (url.split("?")[0].split(".").pop() || "").toLowerCase();
+    if (["mp4","webm","mov","m4v","ogv"].includes(ext)) return "video";
+    return "image";
+  }
 
-/* ---------- Three.js : scène, rig stéréo ---------- */
-const scene = new THREE.Scene();
-const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+  function loadMedia(url, type){
+    type = type || guessType(url);
+    if (type === "video"){
+      imgEl.removeAttribute("src");
+      videoEl.muted = false;
+      videoEl.src = url;
+      videoEl.load();
+      const onReady = () => {
+        updateAspect(videoEl.videoWidth || 16, videoEl.videoHeight || 9);
+        videoEl.play().catch(() => { /* nécessitera un geste utilisateur sur certains navigateurs */ });
+      };
+      videoEl.addEventListener("loadedmetadata", onReady, { once: true });
+      screenEl.setAttribute("material", "src", "#mediaVideo");
+    } else {
+      videoEl.pause();
+      videoEl.removeAttribute("src");
+      videoEl.load();
+      imgEl.addEventListener("load", () => {
+        updateAspect(imgEl.naturalWidth || 16, imgEl.naturalHeight || 9);
+      }, { once: true });
+      imgEl.src = url;
+      screenEl.setAttribute("material", "src", "#mediaImg");
+    }
+    currentType = type;
+    enterBtn.disabled = false;
+    statusEl.textContent = "Média prêt : " + url.split("/").pop() + " (" + type + ")";
+  }
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-sun.position.set(2, 4, 3);
-scene.add(sun);
+  function updateAspect(w, h){
+    const ratio = h / w || 9/16;
+    screenEl.setAttribute("geometry", "width", BASE_WIDTH);
+    screenEl.setAttribute("geometry", "height", BASE_WIDTH * ratio);
+  }
 
-const rig = new THREE.Group();
-rig.position.set(0, 1.6, 0);
-scene.add(rig);
-
-const MARGIN_FRAC = 0.08; // marge horizontale sacrifiée pour permettre le recadrage (8%)
-let eyeShiftPx = parseFloat(localStorage.getItem('vrEyeShiftPx') || '0');
-const VFOV_DEG = 75;
-const cameraMain = new THREE.PerspectiveCamera(VFOV_DEG, 1, 0.05, 100);
-rig.add(cameraMain);
-
-/* ---------- Redimensionnement (correction viewport iOS) ---------- */
-function getViewportSize() {
-  const rect = glCanvas.getBoundingClientRect();
-  if (rect.width > 0 && rect.height > 0) return { w: rect.width, h: rect.height };
-  if (window.visualViewport) return { w: window.visualViewport.width, h: window.visualViewport.height };
-  return { w: window.innerWidth, h: window.innerHeight };
-}
-function resizeRenderer() {
-  const { w, h } = getViewportSize();
-  renderer.setSize(w, h, false);
-  rotateHint.classList.toggle('show', h > w);
-}
-window.addEventListener('resize', resizeRenderer);
-window.addEventListener('orientationchange', () => setTimeout(resizeRenderer, 300));
-if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeRenderer);
-resizeRenderer();
-
-/* ---------- Calibration (centrage de l'image sous chaque lentille) ---------- */
-calibToggle.addEventListener('click', () => calibPanel.classList.toggle('show'));
-document.getElementById('calibLeft').addEventListener('click', () => setEyeShift(eyeShiftPx - 2));
-document.getElementById('calibRight').addEventListener('click', () => setEyeShift(eyeShiftPx + 2));
-document.getElementById('calibReset').addEventListener('click', () => setEyeShift(0));
-
-let flipHandX = localStorage.getItem('vrFlipHandX') === '1';
-let flipHandY = localStorage.getItem('vrFlipHandY') === '1';
-document.getElementById('flipHandXBtn').addEventListener('click', () => {
-  flipHandX = !flipHandX;
-  localStorage.setItem('vrFlipHandX', flipHandX ? '1' : '0');
-});
-document.getElementById('flipHandYBtn').addEventListener('click', () => {
-  flipHandY = !flipHandY;
-  localStorage.setItem('vrFlipHandY', flipHandY ? '1' : '0');
-});
-function setEyeShift(v) {
-  eyeShiftPx = v;
-  localStorage.setItem('vrEyeShiftPx', String(eyeShiftPx));
-}
-
-/* ---------- Orientation de l'appareil -> rotation du rig ---------- */
-const zee = new THREE.Vector3(0, 0, 1);
-const euler = new THREE.Euler();
-const q0 = new THREE.Quaternion();
-const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
-
-function getScreenOrientAngle() {
-  if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
-  return window.orientation || 0;
-}
-function onDeviceOrientation(e) {
-  const alpha = THREE.MathUtils.degToRad(e.alpha || 0);
-  const beta = THREE.MathUtils.degToRad(e.beta || 0);
-  const gamma = THREE.MathUtils.degToRad(e.gamma || 0);
-  const orient = THREE.MathUtils.degToRad(getScreenOrientAngle());
-  euler.set(beta, alpha, -gamma, 'YXZ');
-  rig.quaternion.setFromEuler(euler);
-  rig.quaternion.multiply(q1);
-  rig.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
-}
-
-/* ---------- Skybox : sphère équirectangulaire à 360° ---------- */
-const texLoader = new THREE.TextureLoader();
-function makeFallbackTexture() {
-  // Dégradé vertical : sert d'équirectangulaire de secours (haut clair -> bas sombre)
-  const c = document.createElement('canvas'); c.width = 2; c.height = 256;
-  const ctx = c.getContext('2d');
-  const grad = ctx.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#3a5c8c');
-  grad.addColorStop(0.55, '#16213e');
-  grad.addColorStop(1, '#0a120a');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, 2, 256);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-function loadTexture(url, fallback) {
-  return new Promise(resolve => {
-    if (!url) return resolve(fallback);
-    texLoader.load(url, tex => { tex.colorSpace = THREE.SRGBColorSpace; resolve(tex); }, undefined, () => resolve(fallback));
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const type = file.type.startsWith("video") ? "video" : "image";
+    loadMedia(url, type);
   });
-}
 
-async function buildSkybox() {
-  const panoTex = await loadTexture(SCENE_CONFIG.skybox.panorama, makeFallbackTexture());
-  panoTex.wrapS = THREE.RepeatWrapping;
+  loadUrlBtn.addEventListener("click", () => {
+    const url = urlInput.value.trim();
+    if (url) loadMedia(url);
+  });
 
-  // Sphère vue de l'intérieur (BackSide) : le mapping UV par défaut d'une
-  // SphereGeometry correspond exactement à une projection équirectangulaire
-  // (u = longitude/horizon, v = latitude/haut-bas), donc aucune conversion
-  // n'est nécessaire pour une image panorama 360° classique.
-  const skyGeo = new THREE.SphereGeometry(40, 64, 40);
-  const skyMat = new THREE.MeshBasicMaterial({ map: panoTex, side: THREE.BackSide });
-  scene.add(new THREE.Mesh(skyGeo, skyMat));
-}
+  // ---------- Entrée / sortie VR ----------
+  enterBtn.addEventListener("click", () => {
+    sceneEl.enterVR();
+  });
 
-/* ---------- Modèles 3D configurables ---------- */
-const gltfLoader = new GLTFLoader();
-const mixers = [];
-function loadConfiguredModels() {
-  (SCENE_CONFIG.models || []).forEach(cfg => {
-    gltfLoader.load(cfg.url, gltf => {
-      const obj = gltf.scene;
-      const p = cfg.position || [0, 0, 0];
-      obj.position.set(p[0], p[1], p[2]);
-      const r = cfg.rotation || [0, 0, 0];
-      obj.rotation.set(
-        THREE.MathUtils.degToRad(r[0]), THREE.MathUtils.degToRad(r[1]), THREE.MathUtils.degToRad(r[2])
-      );
-      const s = cfg.scale != null ? cfg.scale : 1;
-      if (Array.isArray(s)) obj.scale.set(s[0], s[1], s[2]); else obj.scale.setScalar(s);
-      scene.add(obj);
+  sceneEl.addEventListener("enter-vr", () => {
+    landingEl.style.display = "none";
+    reopenBtn.style.display = "block";
+  });
+  sceneEl.addEventListener("exit-vr", () => {
+    landingEl.style.display = "flex";
+    reopenBtn.style.display = "none";
+  });
+  reopenBtn.addEventListener("click", () => {
+    landingEl.style.display = "flex";
+  });
 
-      if (cfg.animation && gltf.animations && gltf.animations.length) {
-        const mixer = new THREE.AnimationMixer(obj);
-        let clip = gltf.animations[0];
-        if (typeof cfg.animation === 'string') {
-          clip = gltf.animations.find(c => c.name === cfg.animation) || clip;
-        }
-        mixer.clipAction(clip).play();
-        mixers.push(mixer);
-      }
-    }, undefined, err => {
-      console.warn('Modèle introuvable :', cfg.url, err);
-      const errBox = new THREE.Mesh(
-        new THREE.BoxGeometry(0.4, 0.4, 0.4),
-        new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true })
-      );
-      const p = cfg.position || [0, 0, 0];
-      errBox.position.set(p[0], p[1], p[2]);
-      scene.add(errBox);
+  // ---------- Curseur "fuse" : anneau de progression pendant le regard prolongé ----------
+  const cursorEl  = document.getElementById("cursor");
+  const fuseRingEl = document.getElementById("fuseRing");
+
+  cursorEl.addEventListener("fusing", (evt) => {
+    const timeout = (evt.detail && evt.detail.fuseTimeout) || 1200;
+    fuseRingEl.setAttribute("visible", true);
+    fuseRingEl.setAttribute("scale", "0.001 0.001 0.001");
+    fuseRingEl.removeAttribute("animation__fuse");
+    fuseRingEl.setAttribute("animation__fuse", {
+      property: "scale",
+      from: "0.001 0.001 0.001",
+      to: "1 1 1",
+      dur: timeout,
+      easing: "linear"
     });
   });
-}
-
-/* ---------- Orbes ---------- */
-const TOTAL_ORBS = 8;
-let collected = 0;
-totalEl.textContent = TOTAL_ORBS;
-const colors = [0xff6b6b, 0x5bffb0, 0x5b8cff, 0xffd15b, 0xc85bff, 0x5bf0ff, 0xff5bb0, 0xa3ff5b];
-let orbs = [];
-
-function randomOrbPosition() {
-  const radius = 2.6 + Math.random() * 1.4;
-  const theta = Math.random() * Math.PI * 2;
-  const phi = (Math.random() * 0.8 + 0.15) * Math.PI * 0.5;
-  const x = radius * Math.sin(phi) * Math.cos(theta);
-  const y = 0.3 + radius * Math.cos(phi) * 0.6;
-  const z = radius * Math.sin(phi) * Math.sin(theta);
-  return new THREE.Vector3(x, y - 1.0, z);
-}
-
-const orbGroup = new THREE.Group();
-rig.parent.add(orbGroup);
-const ORBS_ENABLED = false; // désactivé temporairement pour se concentrer sur le réglage de la vision stéréo
-function spawnOrbs() {
-  orbGroup.clear();
-  orbs = [];
-  if (!ORBS_ENABLED) { collected = 0; scoreEl.textContent = 0; return; }
-  for (let i = 0; i < TOTAL_ORBS; i++) {
-    const color = colors[i % colors.length];
-    const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.3 });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 20), mat);
-    mesh.position.copy(randomOrbPosition()).add(rig.position);
-    orbGroup.add(mesh);
-    orbs.push({ mesh, caught: false, pulsePhase: Math.random() * Math.PI * 2 });
+  function hideFuseRing(){
+    fuseRingEl.removeAttribute("animation__fuse");
+    fuseRingEl.setAttribute("visible", false);
   }
-  collected = 0;
-  scoreEl.textContent = 0;
-}
+  cursorEl.addEventListener("click", hideFuseRing);
+  cursorEl.addEventListener("mouseleave", hideFuseRing);
 
-/* ---------- Projection écran (pour la détection d'attrape) ---------- */
-const _forward = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.Vector3(), _dir = new THREE.Vector3();
-function worldToEyePixels(worldPos, eyeW, eyeH) {
-  _forward.set(0, 0, -1).applyQuaternion(rig.quaternion);
-  _right.set(1, 0, 0).applyQuaternion(rig.quaternion);
-  _up.set(0, 1, 0).applyQuaternion(rig.quaternion);
-  _dir.copy(worldPos).sub(rig.position);
+  // ---------- Boutons du HUD en VR ----------
+  const STEP = 0.35;
+  let currentScale = 1;
 
-  const forward = _dir.dot(_forward);
-  if (forward <= 0.05) return null;
-  const right = _dir.dot(_right), up = _dir.dot(_up);
-  const vFov = THREE.MathUtils.degToRad(VFOV_DEG);
-  const aspect = eyeW / eyeH;
-  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-  const ndcX = (right / forward) / Math.tan(hFov / 2);
-  const ndcY = (up / forward) / Math.tan(vFov / 2);
-  return { x: (ndcX * 0.5 + 0.5) * eyeW, y: (0.5 - ndcY * 0.5) * eyeH };
-}
+  function getCameraAxes(){
+    const camObj = document.getElementById("cam").object3D;
+    camObj.updateMatrixWorld();
+    const e = camObj.matrixWorld.elements;
+    const right   = new THREE.Vector3(e[0], e[1], e[2]).normalize();
+    const up      = new THREE.Vector3(e[4], e[5], e[6]).normalize();
+    const forward = new THREE.Vector3(-e[8], -e[9], -e[10]).normalize();
+    const pos = new THREE.Vector3();
+    camObj.getWorldPosition(pos);
+    return { right, up, forward, pos };
+  }
 
-/* ---------- Mains 3D : gant blanc entièrement articulé ---------- */
-const CATCH_LANDMARKS = [0, 4, 8, 12, 16, 20];
-const PALM_JOINTS = [0, 5, 9, 13, 17];
+  function moveScreen(vec){
+    screenEl.object3D.position.add(vec);
+  }
 
-// Toutes les articulations de doigts (hors poignet), avec rayon dégressif base -> pointe
-const JOINT_RADIUS = {
-  1: 0.028, 2: 0.023, 3: 0.019, 4: 0.015,
-  5: 0.027, 6: 0.022, 7: 0.018, 8: 0.014,
-  9: 0.028, 10: 0.023, 11: 0.019, 12: 0.015,
-  13: 0.026, 14: 0.021, 15: 0.017, 16: 0.013,
-  17: 0.023, 18: 0.019, 19: 0.015, 20: 0.012
-};
-const FINGER_JOINTS = Object.keys(JOINT_RADIUS).map(Number);
-// Segments entre articulations consécutives d'un même doigt (effilés : rayon base > rayon pointe)
-const FINGER_SEGMENTS = [
-  [1, 2], [2, 3], [3, 4],
-  [5, 6], [6, 7], [7, 8],
-  [9, 10], [10, 11], [11, 12],
-  [13, 14], [14, 15], [15, 16],
-  [17, 18], [18, 19], [19, 20]
-];
+  function recenterScreen(){
+    const { forward, pos } = getCameraAxes();
+    const target = pos.clone().add(forward.clone().multiplyScalar(BASE_DISTANCE));
+    screenEl.object3D.position.copy(target);
+    screenEl.object3D.lookAt(pos);
+    screenEl.object3D.rotateY(Math.PI);
+  }
 
-function makeHandRig() {
-  const group = new THREE.Group();
-  const gloveMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.02 });
-  const cuffMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+  function setScale(next){
+    currentScale = Math.min(3, Math.max(0.3, next));
+    screenEl.object3D.scale.set(currentScale, currentScale, currentScale);
+  }
 
-  const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 20), gloveMat);
-  group.add(palm);
+  function tryOpenPicker(){
+    try { fileInput.click(); }
+    catch (err) { /* certains navigateurs bloquent l'ouverture du sélecteur hors d'un vrai geste utilisateur */ }
+  }
 
-  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 14), cuffMat);
-  group.add(cuff);
+  function nextMedia(){
+    if (mediaLibrary.length === 0) return;
+    libraryIndex = (libraryIndex + 1) % mediaLibrary.length;
+    const item = mediaLibrary[libraryIndex];
+    loadMedia(item.url, item.type);
+  }
 
-  const joints = {};
-  FINGER_JOINTS.forEach(idx => {
-    const j = new THREE.Mesh(new THREE.SphereGeometry(JOINT_RADIUS[idx], 12, 12), gloveMat);
-    group.add(j);
-    joints[idx] = j;
-  });
+  function togglePlayPause(){
+    if (currentType !== "video") return;
+    if (videoEl.paused) videoEl.play().catch(() => {});
+    else videoEl.pause();
+  }
 
-  const segments = FINGER_SEGMENTS.map(([a, b]) => {
-    // Cylindre effilé : rayon du côté "base" (a) plus large que côté "pointe" (b)
-    const seg = new THREE.Mesh(new THREE.CylinderGeometry(JOINT_RADIUS[b], JOINT_RADIUS[a], 1, 10), gloveMat);
-    group.add(seg);
-    return seg;
-  });
-
-  group.visible = false;
-  scene.add(group);
-  return { group, palm, cuff, joints, segments };
-}
-const handRigs = [makeHandRig(), makeHandRig()];
-
-const HAND_BASE_DIST = 0.55;
-const HAND_Z_SCALE = 1.4;
-function landmarkToWorld(landmark, eyeW, eyeH) {
-  let ndcX = (landmark.x - 0.5) * 2;
-  let ndcY = (0.5 - landmark.y) * 2;
-  if (flipHandX) ndcX = -ndcX;
-  if (flipHandY) ndcY = -ndcY;
-  const dist = Math.max(0.25, Math.min(1.2, HAND_BASE_DIST + landmark.z * HAND_Z_SCALE));
-  const vFov = THREE.MathUtils.degToRad(VFOV_DEG);
-  const aspect = eyeW / eyeH;
-  const halfH = dist * Math.tan(vFov / 2);
-  const halfW = halfH * aspect;
-
-  _forward.set(0, 0, -1).applyQuaternion(rig.quaternion);
-  _right.set(1, 0, 0).applyQuaternion(rig.quaternion);
-  _up.set(0, 1, 0).applyQuaternion(rig.quaternion);
-
-  return new THREE.Vector3()
-    .copy(rig.position)
-    .addScaledVector(_forward, dist)
-    .addScaledVector(_right, ndcX * halfW)
-    .addScaledVector(_up, ndcY * halfH);
-}
-
-const _boneA = new THREE.Vector3(), _boneB = new THREE.Vector3(), _boneMid = new THREE.Vector3(), _boneDir = new THREE.Vector3();
-const _palmCenter = new THREE.Vector3();
-const _lenAxis = new THREE.Vector3(), _widthAxis = new THREE.Vector3(), _normalAxis = new THREE.Vector3();
-const _palmMat = new THREE.Matrix4();
-function updatePalm(rigMesh, worldPts) {
-  const wrist = worldPts[0], indexMCP = worldPts[5], pinkyMCP = worldPts[17], midMCP = worldPts[9];
-
-  _lenAxis.subVectors(midMCP, wrist).normalize();
-  _widthAxis.subVectors(indexMCP, pinkyMCP).normalize();
-  _normalAxis.crossVectors(_lenAxis, _widthAxis).normalize();
-  _widthAxis.crossVectors(_normalAxis, _lenAxis).normalize();
-
-  _palmMat.makeBasis(_widthAxis, _normalAxis, _lenAxis);
-  rigMesh.palm.quaternion.setFromRotationMatrix(_palmMat);
-
-  const palmLen = wrist.distanceTo(midMCP);
-  const palmWidth = indexMCP.distanceTo(pinkyMCP);
-  rigMesh.palm.scale.set(palmWidth * 0.56, palmLen * 0.24, palmLen * 0.6);
-  rigMesh.palm.position.copy(wrist).lerp(midMCP, 0.52);
-}
-function orientSegment(mesh, a, b) {
-  _boneMid.addVectors(a, b).multiplyScalar(0.5);
-  _boneDir.subVectors(b, a);
-  const len = _boneDir.length();
-  mesh.position.copy(_boneMid);
-  mesh.scale.set(1, Math.max(len, 0.001), 1);
-  if (len > 0.0001) mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _boneDir.clone().normalize());
-}
-
-function updateHandMeshes(handsLandmarks, eyeW, eyeH) {
-  handRigs.forEach((rigMesh, i) => {
-    const landmarks = handsLandmarks[i];
-    if (!landmarks) { rigMesh.group.visible = false; return; }
-    rigMesh.group.visible = true;
-    const worldPts = landmarks.map(l => landmarkToWorld(l, eyeW, eyeH));
-
-    // Paume : orientée et étirée selon les axes réels de la main
-    updatePalm(rigMesh, worldPts);
-    _palmCenter.set(0, 0, 0);
-    PALM_JOINTS.forEach(idx => _palmCenter.add(worldPts[idx]));
-    _palmCenter.multiplyScalar(1 / PALM_JOINTS.length);
-
-    // Manchette sombre entre le poignet et la paume
-    _boneA.copy(worldPts[0]);
-    _boneB.copy(worldPts[0]).lerp(_palmCenter, 0.5);
-    orientSegment(rigMesh.cuff, _boneA, _boneB);
-
-    // Chaque articulation de doigt, visible individuellement
-    FINGER_JOINTS.forEach(idx => rigMesh.joints[idx].position.copy(worldPts[idx]));
-
-    // Segments effilés entre articulations consécutives
-    FINGER_SEGMENTS.forEach(([a, b], segIdx) => {
-      orientSegment(rigMesh.segments[segIdx], worldPts[a], worldPts[b]);
+  document.querySelectorAll(".fusable").forEach((el) => {
+    el.addEventListener("click", () => {
+      const action = el.dataset.action;
+      const { right, up } = getCameraAxes();
+      switch (action){
+        case "scale-up":   setScale(currentScale + 0.15); break;
+        case "scale-down": setScale(currentScale - 0.15); break;
+        case "move-left":  moveScreen(right.clone().multiplyScalar(-STEP)); break;
+        case "move-right": moveScreen(right.clone().multiplyScalar(STEP)); break;
+        case "move-up":    moveScreen(up.clone().multiplyScalar(STEP)); break;
+        case "move-down":  moveScreen(up.clone().multiplyScalar(-STEP)); break;
+        case "recenter":   recenterScreen(); break;
+        case "play-pause": togglePlayPause(); break;
+        case "next-media": nextMedia(); break;
+        case "open-picker": tryOpenPicker(); break;
+      }
+      // petit retour visuel : flash du bouton
+      const mat = el.getAttribute("material");
+      el.setAttribute("material", "opacity", 1);
+      setTimeout(() => el.setAttribute("material", "opacity", mat.opacity || 0.88), 180);
     });
   });
-}
 
-/* ---------- Détection d'attrape ---------- */
-function checkCatches(handsLandmarks, eyeW, eyeH) {
-  if (!handsLandmarks.length) return;
-  const catchPx = [];
-  handsLandmarks.forEach(landmarks => {
-    CATCH_LANDMARKS.forEach(idx => catchPx.push({ x: landmarks[idx].x * eyeW, y: landmarks[idx].y * eyeH }));
-  });
-  const threshold = Math.max(45, eyeW * 0.09);
-  orbs.forEach(orb => {
-    if (orb.caught) return;
-    const p = worldToEyePixels(orb.mesh.position, eyeW, eyeH);
-    if (!p) return;
-    for (const pt of catchPx) {
-      const dx = pt.x - p.x, dy = pt.y - p.y;
-      if (Math.sqrt(dx * dx + dy * dy) < threshold) {
-        orb.caught = true;
-        orb.mesh.visible = false;
-        collected++;
-        scoreEl.textContent = collected;
-        break;
-      }
-    }
-  });
-  if (collected >= TOTAL_ORBS) {
-    setTimeout(() => { winOverlay.style.display = 'flex'; running = false; }, 200);
+  // Charge automatiquement le premier élément de la bibliothèque comme démo
+  if (mediaLibrary.length > 0){
+    loadMedia(mediaLibrary[0].url, mediaLibrary[0].type);
   }
-}
-
-/* ---------- Suivi de main (MediaPipe) ---------- */
-let handLandmarker = null;
-let running = false;
-const clock = new THREE.Clock();
-
-async function initHandModel() {
-  statusEl.textContent = 'Chargement du modèle de détection de mains…';
-  const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
-  handLandmarker = await HandLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-      delegate: "GPU"
-    },
-    runningMode: "VIDEO",
-    numHands: 2
-  });
-}
-async function startCamera() {
-  statusEl.textContent = 'Accès à la caméra (pour le suivi des mains uniquement)…';
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-    video.srcObject = stream;
-    await video.play();
-  } catch (e) {
-    errorEl.textContent = "Impossible d'accéder à la caméra : " + e.message;
-    throw e;
-  }
-}
-
-/* ---------- Boucle de rendu ---------- */
-function renderLoop() {
-  if (!running) return;
-  const delta = clock.getDelta();
-  mixers.forEach(m => m.update(delta));
-
-  const { w, h } = getViewportSize();
-  const eyeW = w / 2, eyeH = h;
-  let hands = [];
-  if (handLandmarker && video.readyState >= 2) {
-    const result = handLandmarker.detectForVideo(video, performance.now());
-    hands = result.landmarks || [];
-  }
-  updateHandMeshes(hands, eyeW, eyeH);
-  checkCatches(hands, eyeW, eyeH);
-
-  orbs.forEach(o => {
-    if (o.caught) return;
-    o.pulsePhase += delta * 2;
-    const s = 1 + 0.06 * Math.sin(o.pulsePhase);
-    o.mesh.scale.setScalar(s);
-  });
-
-  renderer.setScissorTest(true);
-  const eyeBufW = eyeW, eyeBufH = eyeH; // pixels CSS : setViewport/setScissor appliquent déjà le pixelRatio en interne
-
-  // Frustum légèrement élargi horizontalement pour offrir une marge de recadrage,
-  // sans jamais toucher au champ de vision vertical (VFOV_DEG reste inchangé).
-  const wideBufW = eyeBufW * (1 + MARGIN_FRAC);
-  cameraMain.fov = VFOV_DEG;
-  cameraMain.aspect = wideBufW / eyeBufH;
-  cameraMain.updateProjectionMatrix();
-
-  const marginBufPx = eyeBufW * MARGIN_FRAC;
-  const maxShiftBuf = marginBufPx / 2;
-  const shiftBuf = Math.max(-maxShiftBuf, Math.min(maxShiftBuf, eyeShiftPx));
-
-  // Œil gauche : même caméra, recadrage décalé d'un côté du cadre élargi
-  cameraMain.setViewOffset(wideBufW, eyeBufH, marginBufPx / 2 - shiftBuf, 0, eyeBufW, eyeBufH);
-  renderer.setViewport(0, 0, eyeBufW, eyeBufH);
-  renderer.setScissor(0, 0, eyeBufW, eyeBufH);
-  renderer.render(scene, cameraMain);
-
-  // Œil droit : même caméra, recadrage décalé de l'autre côté (image quasi identique)
-  cameraMain.setViewOffset(wideBufW, eyeBufH, marginBufPx / 2 + shiftBuf, 0, eyeBufW, eyeBufH);
-  renderer.setViewport(eyeBufW, 0, eyeBufW, eyeBufH);
-  renderer.setScissor(eyeBufW, 0, eyeBufW, eyeBufH);
-  renderer.render(scene, cameraMain);
-
-  cameraMain.clearViewOffset();
-
-  requestAnimationFrame(renderLoop);
-}
-
-/* ---------- Démarrage / permissions ---------- */
-const needsIOSMotionPermission = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
-if (needsIOSMotionPermission) iosPermBtn.style.display = 'inline-block';
-
-iosPermBtn.addEventListener('click', async () => {
-  try {
-    const state = await DeviceOrientationEvent.requestPermission();
-    if (state === 'granted') {
-      window.addEventListener('deviceorientation', onDeviceOrientation);
-      iosPermBtn.style.display = 'none';
-    }
-  } catch (e) {}
-});
-
-startBtn.addEventListener('click', async () => {
-  startBtn.disabled = true;
-  try {
-    if (!needsIOSMotionPermission) window.addEventListener('deviceorientation', onDeviceOrientation);
-    await startCamera();
-    await initHandModel();
-    spawnOrbs();
-    overlay.style.display = 'none';
-    running = true;
-    resizeRenderer();
-    requestAnimationFrame(renderLoop);
-  } catch (e) {
-    startBtn.disabled = false;
-    statusEl.textContent = '';
-    if (!errorEl.textContent) errorEl.textContent = 'Erreur : ' + e.message;
-  }
-});
-
-await buildSkybox();
-loadConfiguredModels();
-
-document.getElementById('restartBtn').addEventListener('click', () => {
-  spawnOrbs();
-  winOverlay.style.display = 'none';
-  running = true;
-  requestAnimationFrame(renderLoop);
-});
+})();
 </script>
+
 </body>
 </html>
