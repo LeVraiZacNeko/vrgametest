@@ -116,18 +116,12 @@
     border: none; border-top: 1px solid var(--border);
     margin: 18px 0;
   }
-  #reopenLanding{
-    position:absolute; top:14px; left:14px; z-index:15;
-    display:none;
-  }
   .hint{
     font-size: 0.74rem; color: var(--muted); margin-top: 4px; line-height:1.4;
   }
 </style>
 </head>
 <body>
-
-<button id="reopenLanding">← Changer le média</button>
 
 <div id="landing">
   <div id="card">
@@ -181,7 +175,7 @@
 
   <!-- Caméra + curseur "fuse" (regard prolongé = clic) -->
   <a-entity id="cameraRig" position="0 1.6 0">
-    <a-camera id="cam" look-controls wasd-controls-enabled="false">
+    <a-camera id="cam" look-controls="magicWindowTrackingEnabled: true" wasd-controls="enabled: false">
 
       <a-entity id="cursor"
         cursor="fuse: true; fuseTimeout: 1200"
@@ -262,7 +256,6 @@
 
   const sceneEl      = document.querySelector("a-scene");
   const landingEl    = document.getElementById("landing");
-  const reopenBtn     = document.getElementById("reopenLanding");
   const fileInput    = document.getElementById("fileInput");
   const urlInput     = document.getElementById("urlInput");
   const loadUrlBtn   = document.getElementById("loadUrlBtn");
@@ -366,7 +359,7 @@
   });
 
   // ---------- Entrée / sortie VR ----------
-  enterBtn.addEventListener("click", () => {
+  function goEnterVR(){
     if (typeof sceneEl.enterVR !== "function"){
       statusEl.textContent = "La scène VR n'est pas encore prête (A-Frame non chargé). Réessaie dans un instant ou recharge la page.";
       return;
@@ -381,17 +374,33 @@
     } catch (err) {
       statusEl.textContent = "Impossible d'entrer en VR : " + (err && err.message ? err.message : String(err));
     }
+  }
+
+  enterBtn.addEventListener("click", () => {
+    // iOS (Safari) bloque l'accès au gyroscope/orientation tant qu'il n'est pas
+    // explicitement demandé pendant un vrai geste utilisateur. Sans ça, la scène
+    // passe bien en mode stéréo mais la caméra ne suit jamais les mouvements de tête.
+    const DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === "function"){
+      DOE.requestPermission().then((permission) => {
+        if (permission === "granted"){
+          goEnterVR();
+        } else {
+          statusEl.textContent = "Le suivi de la tête a besoin de l'accès au capteur d'orientation. Autorise-le dans Réglages → Safari → Mouvement et orientation, puis recharge la page.";
+        }
+      }).catch(() => {
+        // Si la demande échoue pour une raison quelconque, on tente quand même d'entrer en VR.
+        goEnterVR();
+      });
+    } else {
+      goEnterVR();
+    }
   });
 
   sceneEl.addEventListener("enter-vr", () => {
     landingEl.style.display = "none";
-    reopenBtn.style.display = "block";
   });
   sceneEl.addEventListener("exit-vr", () => {
-    landingEl.style.display = "flex";
-    reopenBtn.style.display = "none";
-  });
-  reopenBtn.addEventListener("click", () => {
     landingEl.style.display = "flex";
   });
 
