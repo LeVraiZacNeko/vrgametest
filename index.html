@@ -253,7 +253,7 @@
 (function(){
   "use strict";
 
-  const APP_VERSION = "0.17";
+  const APP_VERSION = "0.19";
   console.log("Visionneuse VR Cardboard — version " + APP_VERSION);
 
   // ---- Bibliothèque de médias intégrée : ajoute tes propres entrées ici ----
@@ -338,36 +338,70 @@
 function loadMedia(url, type){
   type = type || guessType(url);
 
- if (type === "video"){
-  imgEl.removeAttribute("src");
+  // Annule l'état précédent avant de charger le nouveau média.
+  mediaReady = false;
+  refreshEnterButton();
+  currentType = type;
 
+  if (type === "video"){
+    imgEl.removeAttribute("src");
+
+    videoEl.pause();
+    videoEl.removeAttribute("src");
+    videoEl.load();
+
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.setAttribute("playsinline", "");
+    videoEl.setAttribute("webkit-playsinline", "");
+    videoEl.preload = "metadata";
+    videoEl.src = url;
+
+    const onReady = () => {
+      updateAspect(videoEl.videoWidth || 16, videoEl.videoHeight || 9);
+      mediaReady = true;
+      refreshEnterButton();
+      statusEl.textContent =
+        "Vidéo prête. Appuie sur Entrer en VR puis sur Lecture.";
+    };
+
+    videoEl.addEventListener("loadedmetadata", onReady, { once: true });
+
+    videoEl.addEventListener("error", () => {
+      mediaReady = false;
+      refreshEnterButton();
+      console.error("Erreur vidéo :", videoEl.error);
+      statusEl.textContent =
+        "Safari n'a pas pu charger ou décoder cette vidéo.";
+    }, { once: true });
+
+    // Ne branche pas la vidéo comme texture WebGL avant l'entrée en VR.
+    videoTexturePending = true;
+    screenEl.setAttribute("material", "src", "#mediaImg");
+    return;
+  }
+
+  // ---------- Image ----------
   videoEl.pause();
   videoEl.removeAttribute("src");
   videoEl.load();
+  videoTexturePending = false;
 
-  videoEl.muted = true;
-  videoEl.playsInline = true;
-  videoEl.setAttribute("playsinline", "");
-  videoEl.setAttribute("webkit-playsinline", "");
-  videoEl.src = url;
-
-  const onReady = () => {
-    updateAspect(videoEl.videoWidth || 16, videoEl.videoHeight || 9);
+  imgEl.addEventListener("load", () => {
+    updateAspect(imgEl.naturalWidth || 16, imgEl.naturalHeight || 9);
+    mediaReady = true;
+    refreshEnterButton();
     statusEl.textContent =
-      "Vidéo prête. Appuie sur Lecture pour démarrer.";
-  };
-
-  videoEl.addEventListener("loadedmetadata", onReady, { once: true });
-
-  videoEl.addEventListener("error", () => {
-    console.error("Erreur vidéo :", videoEl.error);
-    statusEl.textContent =
-      "Safari n'a pas pu charger ou décoder cette vidéo.";
+      "Image prête : " + (url.split("/").pop() || "média");
   }, { once: true });
 
-  videoTexturePending = true;
+  imgEl.addEventListener("error", () => {
+    mediaReady = false;
+    refreshEnterButton();
+    statusEl.textContent = "Impossible de charger cette image.";
+  }, { once: true });
 
-  // Important : pas encore de texture vidéo WebGL.
+  imgEl.src = url;
   screenEl.setAttribute("material", "src", "#mediaImg");
 }
 
